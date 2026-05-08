@@ -399,7 +399,7 @@ class IBKRModule(Module):
             self.list_all_positions(order_by='s_qty', ascending=False)
         elif cmd in ['ld', 'list diff']:
             self.list_all_positions(order_by='diff', ascending=True)
-        elif cmd.startswith('e ') or cmd.startswith('edit '):
+        elif cmd == 'e' or cmd == 'edit' or cmd.startswith('e ') or cmd.startswith('edit '):
             parts = command.split()
             if len(parts) >= 2:
                 try:
@@ -407,6 +407,8 @@ class IBKRModule(Module):
                     self.edit_trade(idx)
                 except ValueError:
                     self.output_content = "[error]Usage: edit <index>[/]"
+            elif self.current_symbol:
+                self.edit_trade(1)
             else:
                 self.output_content = "[error]Usage: edit <index>[/]"
         elif cmd == "":
@@ -773,14 +775,31 @@ class IBKRModule(Module):
         # But we can just ask for new values.
         
         self.app.console.print(f"[info]Editing trade #{idx} (ID: {trade_id})[/]")
-        
+
+        description = ""
+        if not self.trades_df.empty:
+            row = self.trades_df[self.trades_df['tradeID'] == trade_id]
+            if not row.empty:
+                description = str(row.iloc[0].get('description', '') or '')
+
+        delta_label = f"{description} Delta" if description else "Delta"
+
         try:
-            delta_str = self.app.console.input("[prompt]Enter Delta (float): [/]")
-            und_price_str = self.app.console.input("[prompt]Enter Und Price (float): [/]")
-            
+            delta_str = self.app.console.input(f"[prompt]{delta_label}: [/]")
+            und_price_str = self.app.console.input("[prompt]Price: [/]")
+
             updates = {}
-            if delta_str.strip():
-                updates['delta'] = float(delta_str)
+            delta_str = delta_str.strip()
+            if delta_str:
+                if '.' in delta_str:
+                    updates['delta'] = float(delta_str)
+                else:
+                    sign = -1 if delta_str.startswith('-') else 1
+                    digits = delta_str.lstrip('+-')
+                    if digits.isdigit() and digits:
+                        updates['delta'] = sign * int(digits) / (10 ** len(digits))
+                    else:
+                        updates['delta'] = float(delta_str)
             if und_price_str.strip():
                 updates['und_price'] = float(und_price_str)
                 
