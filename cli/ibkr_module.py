@@ -356,7 +356,8 @@ class IBKRModule(Module):
         - LS  | list symbol > List all positions (by Symbol)
         - LQ  | list qty    > List all positions (by Quantity)
         - LD  | list diff   > List all positions (by Diff)
-        - T   | trades     > List all trades
+        - T   | trades     > List trades (last 7 days)
+        - TT  | trades all > List all trades
         - R   | reload     > Reload trades from DB
         - P x | p <sym>    > List positions for a symbol
         - DEB | debug      > Debug (print trades_df)
@@ -373,8 +374,10 @@ class IBKRModule(Module):
             self.show_performance()
         elif cmd in ['deb', 'debug']:
             self.debug()
-        elif cmd in ['t', 'trades']:
+        elif cmd in ['tt', 'trades all']:
             self.list_all_trades()
+        elif cmd in ['t', 'trades']:
+            self.list_all_trades(days=7)
         elif cmd in ['r', 'reload']:
             self.load_trades()
             self.output_content = f"Trades reloaded. Total: {len(self.trades_df)}"
@@ -836,13 +839,26 @@ class IBKRModule(Module):
         # Skip the next render cycle in main loop to prevent clearing the screen
         self.app.skip_render = True
 
-    def list_all_trades(self):
+    def list_all_trades(self, days=None):
         try:
             if self.trades_df.empty:
                 self.output_content = "[info]No trades loaded.[/]"
                 return
 
-            table = Table(title="All Trades", expand=True)
+            df = self.trades_df
+            if days is not None:
+                dt = pd.to_datetime(df['dateTime'], errors='coerce')
+                cutoff = pd.Timestamp.now(tz=dt.dt.tz) - pd.Timedelta(days=days) if dt.dt.tz is not None else pd.Timestamp.now() - pd.Timedelta(days=days)
+                df = df[dt >= cutoff]
+                title = f"Trades (last {days} days)"
+            else:
+                title = "All Trades"
+
+            if df.empty:
+                self.output_content = f"[info]No trades in the last {days} days.[/]"
+                return
+
+            table = Table(title=title, expand=True)
             table.add_column("Date", style="cyan")
             table.add_column("Symbol", style="bold yellow")
             table.add_column("Desc")
@@ -855,7 +871,7 @@ class IBKRModule(Module):
             table.add_column("Delta", justify="right", style="yellow")
             table.add_column("Und Price", justify="right", style="yellow")
 
-            for _, row in self.trades_df.iterrows():
+            for _, row in df.iterrows():
                 pnl = row.get('realized_pnl', 0.0)
                 rem_qty = row.get('remaining_qty', 0.0)
 
