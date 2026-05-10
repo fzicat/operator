@@ -366,6 +366,7 @@ class IBKRModule(Module):
         - CSV | list csv    > Print positions as CSV (sorted by Symbol)
         - T   | trades     > List trades (last 7 days)
         - TT  | trades all > List all trades
+        - CA  | calls assigned > List assigned call trades with assignment cost
         - R   | reload     > Reload trades from DB
         - P x | p <sym>    > List positions for a symbol
         - DEB | debug      > Debug (print trades_df)
@@ -386,6 +387,8 @@ class IBKRModule(Module):
             self.list_all_trades()
         elif cmd in ['t', 'trades']:
             self.list_all_trades(days=7)
+        elif cmd in ['ca', 'calls assigned', 'assigned calls']:
+            self.list_assigned_calls()
         elif cmd in ['r', 'reload']:
             self.load_trades()
             self.output_content = f"Trades reloaded. Total: {len(self.trades_df)}"
@@ -920,6 +923,129 @@ class IBKRModule(Module):
             # (since render is skipped and the loop goes straight to input)
         except Exception as e:
             self.output_content = f"[error]Error listing trades: {e}[/]"
+
+    def list_assigned_calls(self):
+        try:
+            if self.trades_df.empty:
+                self.output_content = "[info]No trades loaded.[/]"
+                return
+
+            df = self.trades_df.copy()
+            notes_str = df['notes'].fillna('').astype(str).str.strip()
+            mask = (df['putCall'] == 'C') & (notes_str == 'A')
+            assigned = df[mask].copy()
+
+            if assigned.empty:
+                self.output_content = "[info]No assigned call trades found.[/]"
+                return
+
+            assigned['dateTime'] = pd.to_datetime(assigned['dateTime'], errors='coerce').dt.tz_localize(None)
+            assigned = assigned.sort_values('dateTime', ascending=False)
+
+            # Fetch Friday's closing prices for each underlying on each assignment date.
+            close_lookup = {}
+            symbols = sorted({s for s in assigned['underlyingSymbol'].dropna().unique() if s})
+            if symbols:
+                try:
+                    from yahooquery import Ticker
+                    min_d = assigned['dateTime'].min().normalize()
+                    max_d = assigned['dateTime'].max().normalize() + pd.Timedelta(days=1)
+                    ticker = Ticker(symbols, asynchronous=True)
+                    hist = ticker.history(start=min_d.strftime('%Y-%m-%d'), end=max_d.strftime('%Y-%m-%d'))
+                    if isinstance(hist, pd.DataFrame) and not hist.empty:
+                        for idx, row in hist.iterrows():
+                            sym, dt = idx if isinstance(idx, tuple) else (symbols[0], idx)
+                            date_str = pd.Timestamp(dt).strftime('%Y-%m-%d')
+                            close_val = row.get('close')
+                            if close_val is not None and pd.notnull(close_val):
+                                close_lookup[(sym, date_str)] = float(close_val)
+                except Exception as e:
+                    self.app.console.print(f"[error]Yahoo history fetch failed: {e}[/]")
+
+            table = Table(title="Assigned Call Trades", expand=True)
+            table.add_column("Date", style="cyan")
+            table.add_column("Symbol", style="bold yellow")
+            table.add_column("Desc")
+            table.add_column("Qty", justify="right", style="magenta")
+            table.add_column("Price", justify="right", style="green")
+            table.add_column("Comm", justify="right")
+            table.add_column("O/C", justify="center")
+            table.add_column("PnL", justify="right", style="bold red")
+            table.add_column("Rem Qty", justify="right", style="blue")
+            table.add_column("Delta", justify="right", style="yellow")
+            table.add_column("Und Price", justify="right", style="yellow")
+            table.add_column("Strike", justify="right")
+            table.add_column("Fri Close", justify="right")
+            table.add_column("Premium/Sh", justify="right")
+            table.add_column("Assignment Cost", justify="right", style="bold")
+
+            total_cost = 0.0
+            total_known = False
+
+            for _, row in assigned.iterrows():
+                qty = float(row['quantity']) if pd.notnull(row['quantity']) else 0.0
+                multiplier = float(row['multiplier']) if pd.notnull(row['multiplier']) else 100.0
+                strike = float(row['strike']) if pd.notnull(row['strike']) else 0.0
+                trade_price = float(row['tradePrice']) if pd.notnull(row['tradePrice']) else 0.0
+                realized_pnl = float(row.get('realized_pnl', 0.0) or 0.0)
+                rem_qty = float(row.get('remaining_qty', 0.0) or 0.0)
+
+                shares = abs(qty) * multiplier
+                premium_per_share = (realized_pnl / shares + trade_price) if shares else 0.0
+
+                und_sym = row.get('underlyingSymbol')
+                date_str = row['dateTime'].strftime('%Y-%m-%d') if pd.notnull(row['dateTime']) else ""
+                fri_close = close_lookup.get((und_sym, date_str))
+
+                if fri_close is not None and shares and strike:
+                    assignment_cost = (fri_close - strike - premium_per_share) * shares
+                    total_cost += assignment_cost
+                    total_known = True
+                    if assignment_cost > 0:
+                        cost_str = f"[bright_red]{assignment_cost:,.2f}[/bright_red]"
+                    elif assignment_cost < 0:
+                        cost_str = f"[neutral_blue]{assignment_cost:,.2f}[/neutral_blue]"
+                    else:
+                        cost_str = f"{assignment_cost:,.2f}"
+                    fri_close_str = f"{fri_close:.2f}"
+                else:
+                    cost_str = "[dim]N/A[/dim]"
+                    fri_close_str = "[dim]N/A[/dim]"
+
+                table.add_row(
+                    row['dateTime'].strftime('%Y-%m-%d %H:%M') if pd.notnull(row['dateTime']) else "",
+                    str(row['symbol']),
+                    str(row['description']),
+                    f"{qty:.0f}",
+                    f"{trade_price:.2f}",
+                    f"{row['ibCommission']:.2f}" if pd.notnull(row['ibCommission']) else "",
+                    str(row['openCloseIndicator']),
+                    f"{realized_pnl:.2f}" if realized_pnl != 0 else "",
+                    f"{rem_qty:.0f}" if rem_qty != 0 else "",
+                    f"{row.get('delta', 0.0):.4f}" if pd.notnull(row.get('delta')) else "",
+                    f"{row.get('und_price', 0.0):.2f}" if pd.notnull(row.get('und_price')) else "",
+                    f"{strike:.2f}",
+                    fri_close_str,
+                    f"{premium_per_share:.2f}",
+                    cost_str,
+                )
+
+            if total_known:
+                table.add_section()
+                if total_cost > 0:
+                    total_str = f"[bright_red]{total_cost:,.2f}[/bright_red]"
+                elif total_cost < 0:
+                    total_str = f"[neutral_blue]{total_cost:,.2f}[/neutral_blue]"
+                else:
+                    total_str = f"{total_cost:,.2f}"
+                table.add_row("TOTAL", "", "", "", "", "", "", "", "", "", "", "", "", "", total_str, style="bold")
+
+            self.app.console.clear()
+            self.app.console.print(table)
+            self.app.skip_render = True
+
+        except Exception as e:
+            self.output_content = f"[error]Error listing assigned calls: {e}[/]"
 
     def stats_daily(self):
         try:
