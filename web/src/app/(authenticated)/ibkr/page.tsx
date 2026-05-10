@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { supabase, toCamelCaseArray } from "@/lib/supabase";
 import { useError } from "@/lib/error-context";
-import { MarketQuote, Position } from "@/types";
+import { MarketQuote, Position, Trade } from "@/types";
 import {
   calculatePnL,
   calculateCredit,
