@@ -102,7 +102,7 @@ export interface SymbolTarget {
   id: number;
   symbol: string;
   target_percent: number;
-  sector: string | null;
+  basket: string | null;
 }
 
 export interface DailyStat {

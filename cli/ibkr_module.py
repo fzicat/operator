@@ -27,6 +27,7 @@ class IBKRModule(Module):
         
         # Load target percentages from database
         self.target_percent = ibkr_db.fetch_symbol_targets()
+        self.symbol_basket = ibkr_db.fetch_symbol_baskets()
         
         self.load_trades()
 
@@ -361,6 +362,7 @@ class IBKRModule(Module):
         - LC  | list call   > List all positions (by Call qty)
         - LP  | list put    > List all positions (by Put qty)
         - LZ  | list total  > List all positions (by Total Realized PnL)
+        - LB  | list basket > List positions grouped by Basket
         - CSV | list csv    > Print positions as CSV (sorted by Symbol)
         - T   | trades     > List trades (last 7 days)
         - TT  | trades all > List all trades
@@ -416,6 +418,8 @@ class IBKRModule(Module):
             self.list_all_positions(order_by='p_qty', ascending=True)
         elif cmd in ['lz', 'list total']:
             self.list_all_positions(order_by='t_pnl', ascending=False)
+        elif cmd in ['lb', 'list basket']:
+            self.list_positions_by_basket()
         elif cmd in ['csv', 'list csv']:
             self.list_positions_csv()
         elif cmd == 'e' or cmd == 'edit' or cmd.startswith('e ') or cmd.startswith('edit '):
@@ -1255,6 +1259,152 @@ class IBKRModule(Module):
             
         except Exception as e:
             self.output_content = f"[error]Error listing all positions: {e}[/]"
+
+    def list_positions_by_basket(self):
+        try:
+            if self.trades_df.empty:
+                self.output_content = "[info]No trades loaded.[/]"
+                return
+
+            groups = self.trades_df.groupby('underlyingSymbol')
+
+            symbol_rows = []
+            for symbol, group in groups:
+                stock_df = group[~group['putCall'].isin(['C', 'P'])]
+                call_df = group[group['putCall'] == 'C']
+                put_df = group[group['putCall'] == 'P']
+
+                stock_credit_sum = stock_df['credit'].sum() if not stock_df.empty else 0.0
+                value = stock_credit_sum * -1
+                mtm = stock_df['mtm_value'].sum() + call_df['mtm_value'].sum() + put_df['mtm_value'].sum()
+                unrlzd_pnl = group['unrealized_pnl'].sum()
+
+                s_qty = stock_df['remaining_qty'].sum()
+                c_qty = call_df['remaining_qty'].sum()
+                p_qty = put_df['remaining_qty'].sum()
+
+                s_pnl = stock_df['realized_pnl'].sum()
+                c_pnl = call_df['realized_pnl'].sum()
+                p_pnl = put_df['realized_pnl'].sum()
+
+                if any(x != 0 for x in [value, mtm, s_qty, c_qty, p_qty, s_pnl, c_pnl, p_pnl]):
+                    symbol_rows.append({
+                        'symbol': symbol,
+                        'basket': self.symbol_basket.get(symbol) or "(none)",
+                        'value': value,
+                        'mtm': mtm,
+                        'unrlzd_pnl': unrlzd_pnl,
+                        'c_qty': c_qty,
+                        'p_qty': p_qty,
+                        's_pnl': s_pnl,
+                        'c_pnl': c_pnl,
+                        'p_pnl': p_pnl,
+                        'target_pct': self.target_percent.get(symbol, 0.0),
+                    })
+
+            # Aggregate by basket
+            basket_map = {}
+            for r in symbol_rows:
+                b = r['basket']
+                if b not in basket_map:
+                    basket_map[b] = {
+                        'basket': b,
+                        'value': 0.0,
+                        'mtm': 0.0,
+                        'unrlzd_pnl': 0.0,
+                        'c_qty': 0.0,
+                        'p_qty': 0.0,
+                        's_pnl': 0.0,
+                        'c_pnl': 0.0,
+                        'p_pnl': 0.0,
+                        'target_pct': 0.0,
+                    }
+                agg = basket_map[b]
+                agg['value'] += r['value']
+                agg['mtm'] += r['mtm']
+                agg['unrlzd_pnl'] += r['unrlzd_pnl']
+                agg['c_qty'] += r['c_qty']
+                agg['p_qty'] += r['p_qty']
+                agg['s_pnl'] += r['s_pnl']
+                agg['c_pnl'] += r['c_pnl']
+                agg['p_pnl'] += r['p_pnl']
+                agg['target_pct'] += r['target_pct']
+
+            data_rows = sorted(basket_map.values(), key=lambda x: x['mtm'], reverse=True)
+
+            total_value = sum(r['value'] for r in data_rows)
+            total_mtm = sum(r['mtm'] for r in data_rows)
+            total_unrlzd_pnl = sum(r['unrlzd_pnl'] for r in data_rows)
+            total_c_qty = sum(r['c_qty'] for r in data_rows)
+            total_p_qty = sum(r['p_qty'] for r in data_rows)
+            total_s_pnl = sum(r['s_pnl'] for r in data_rows)
+            total_c_pnl = sum(r['c_pnl'] for r in data_rows)
+            total_p_pnl = sum(r['p_pnl'] for r in data_rows)
+            total_target_pct = sum(r['target_pct'] for r in data_rows)
+
+            table = Table(title="Positions by Basket", expand=False, row_styles=["", "on #1d2021"])
+            table.add_column("Basket", style="neutral_yellow")
+            table.add_column("Book Value", justify="right", style="neutral_yellow")
+            table.add_column("MTM Value", justify="right", style="neutral_blue")
+            table.add_column("MTM %", justify="right", style="neutral_blue")
+            table.add_column("Tgt %", justify="right", style="neutral_aqua")
+            table.add_column("Diff", justify="right", style="light4")
+            table.add_column("Unrlzd PnL", justify="right")
+            table.add_column("Call", justify="right", style="neutral_purple")
+            table.add_column("Put", justify="right", style="neutral_purple")
+            table.add_column("S Rlzd PnL", justify="right")
+            table.add_column("C Rlzd PnL", justify="right")
+            table.add_column("P Rlzd PnL", justify="right")
+            table.add_column("T Rlzd PnL", justify="right")
+
+            def fmt_pnl(val):
+                if val == 0:
+                    return ""
+                if val > 0:
+                    return f"[neutral_blue]{val:,.2f}[/neutral_blue]"
+                return f"[bright_red]{val:,.2f}[/bright_red]"
+
+            for r in data_rows:
+                mtm_pct = r['mtm'] / total_mtm * 100 if total_mtm != 0 and r['mtm'] != 0 else 0
+                t_pnl = r['s_pnl'] + r['c_pnl'] + r['p_pnl']
+                table.add_row(
+                    str(r['basket']),
+                    f"{r['value']:,.2f}" if r['value'] != 0 else "",
+                    f"{r['mtm']:,.2f}" if r['mtm'] != 0 else "",
+                    f"{mtm_pct:.2f}%" if mtm_pct != 0 else "",
+                    f"{r['target_pct']:.2f}%" if r['target_pct'] != 0 else "",
+                    self._fmt_diff(mtm_pct - r['target_pct']),
+                    fmt_pnl(r['unrlzd_pnl']),
+                    f"{r['c_qty']:.0f}" if r['c_qty'] != 0 else "",
+                    f"{r['p_qty']:.0f}" if r['p_qty'] != 0 else "",
+                    fmt_pnl(r['s_pnl']),
+                    fmt_pnl(r['c_pnl']),
+                    fmt_pnl(r['p_pnl']),
+                    fmt_pnl(t_pnl),
+                )
+
+            table.add_section()
+            table.add_row(
+                "TOTAL",
+                f"{total_value:,.2f}",
+                f"{total_mtm:,.2f}",
+                f"{total_mtm / total_mtm * 100:.2f}%" if total_mtm != 0 else "",
+                f"{total_target_pct:.2f}%" if total_target_pct != 0 else "",
+                "",
+                fmt_pnl(total_unrlzd_pnl),
+                f"{total_c_qty:.0f}",
+                f"{total_p_qty:.0f}",
+                fmt_pnl(total_s_pnl),
+                fmt_pnl(total_c_pnl),
+                fmt_pnl(total_p_pnl),
+                fmt_pnl(total_s_pnl + total_c_pnl + total_p_pnl),
+                style="bold",
+            )
+
+            self.output_content = table
+
+        except Exception as e:
+            self.output_content = f"[error]Error listing positions by basket: {e}[/]"
 
     def list_positions_csv(self):
         try:

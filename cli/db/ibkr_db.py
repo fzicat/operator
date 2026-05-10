@@ -164,3 +164,18 @@ def fetch_symbol_targets() -> dict:
     except Exception as e:
         print(f"Error fetching symbol targets: {e}")
         return {}
+
+
+def fetch_symbol_baskets() -> dict:
+    """
+    Retrieves all symbol baskets from the database.
+    Returns a dictionary {symbol: basket}
+    """
+    client = get_client()
+
+    try:
+        response = client.table('symbol_targets').select('symbol, basket').execute()
+        return {row['symbol']: row.get('basket') for row in response.data}
+    except Exception as e:
+        print(f"Error fetching symbol baskets: {e}")
+        return {}
