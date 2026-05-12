@@ -152,8 +152,10 @@ class TradeToolsApp:
 
         command = self.console.input("[bright_orange]❯[/] ")
 
-        # After Enter, cursor sits at start of the bottom-line row; move below it.
-        sys.stdout.write("\x1b[1B\r")
+        # After Enter, cursor sits at start of the bottom-line row.
+        # Drop 3 lines below (with newlines so the terminal scrolls if needed)
+        # to clear the horizontal line and leave breathing room above output.
+        sys.stdout.write("\n\n\n")
         sys.stdout.flush()
         return command
 
@@ -169,7 +171,6 @@ class TradeToolsApp:
         if output is None or output == "":
             return
 
-        self.console.print()  # blank line before output
         if isinstance(output, str):
             self.console.print(Text.from_markup(output))
         else:
