@@ -397,6 +397,15 @@ class IBKRModule(Module):
 
     
     def handle_command(self, command):
+        # Route to active sub-module if one is open (q exits back to IBKR)
+        if self.active_submodule is not None:
+            cmd = command.lower().strip()
+            if cmd == 'q':
+                self.exit_submodule()
+                return
+            self.active_submodule.handle_command(command)
+            return
+
         cmd = command.lower().strip()
         if cmd in ['q', 'quit']:
             # Local import to avoid circular dependency
@@ -412,6 +421,7 @@ class IBKRModule(Module):
         - MS  | mtm stock  > Get MTM Values (stocks only, skip options)
         - MV  | mtm verbose > Get MTM Values (verbose, print each symbol -> price)
         - PF  | performance > Year performance in $ and %
+        - S   | stats      > Enter STATS sub-module (tables + plots)
         - SD  | stats day  > Daily PnL Stats
         - SW  | stats week > Weekly PnL Stats
         - LM  | list mtm    > List all positions (by MTM)
@@ -440,6 +450,9 @@ class IBKRModule(Module):
             self.process_mtm_update(skip_options=True)
         elif cmd in ['mv', 'mtm verbose']:
             self.process_mtm_update(verbose=True)
+        elif cmd in ['s', 'stats']:
+            from ibkr_stats_submodule import StatsSubModule
+            self.enter_submodule(StatsSubModule(self))
         elif cmd in ['sd', 'stats day']:
             self.stats_daily()
         elif cmd in ['sw', 'stats week']:
@@ -1704,4 +1717,6 @@ class IBKRModule(Module):
             self.output_content = f"[error]Error generating CSV: {e}[/]"
 
     def get_output(self):
+        if self.active_submodule is not None:
+            return self.active_submodule.get_output()
         return self.output_content

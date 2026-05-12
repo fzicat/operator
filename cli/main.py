@@ -141,7 +141,8 @@ class TradeToolsApp:
         width = max(1, self.console.size.width - 1)
         line = "─" * width
         self.console.print()  # blank line above status bar
-        self.console.print(f"[bright_blue]{self.active_module.get_status()}[/]")
+        status_text = " › ".join(self.active_module.get_status_chain())
+        self.console.print(f"[bright_blue]{status_text}[/]")
         self.console.print(f"[bright_orange]{line}[/]")
 
         # Reserve next row for the bottom line, then bring cursor back up to prompt row
@@ -164,7 +165,7 @@ class TradeToolsApp:
         if self.skip_render:
             # Module already printed directly during handle_command
             self.skip_render = False
-            self.active_module.output_content = ""
+            self.active_module.clear_output()
             return
 
         output = self.active_module.get_output()
@@ -175,7 +176,7 @@ class TradeToolsApp:
             self.console.print(Text.from_markup(output))
         else:
             self.console.print(output)
-        self.active_module.output_content = ""
+        self.active_module.clear_output()
 
     def _print_welcome(self):
         self.console.print()
