@@ -6,10 +6,13 @@ from cli.db import equity_db
 from datetime import datetime
 
 class EquityModule(Module):
+    name = "EQUITY"
+    emoji = "💰"
+
     def __init__(self, app):
         super().__init__(app)
         self.equity_df = pd.DataFrame()
-        self.output_content = "Equity Module Active\nType 'help' for commands."
+        self.output_content = ""
         self.current_subset = None  # Store current view for editing
         self.current_date = None    # Store selected date for editing
         self.load_equity_data()
@@ -687,6 +690,3 @@ class EquityModule(Module):
 
     def get_output(self):
         return self.output_content
-
-    def get_prompt(self):
-        return "[prompt][EQUITY] >> [/]"

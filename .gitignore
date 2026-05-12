@@ -5,3 +5,6 @@ __pycache__/
 cli/venv/
 cli/.venv/
 
+t.bat
+t.sh
+

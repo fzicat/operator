@@ -42,12 +42,15 @@ def _parse_option_expiry(row) -> date | None:
     return None
 
 class IBKRModule(Module):
+    name = "IBKR"
+    emoji = "🗠"
+
     def __init__(self, app):
         super().__init__(app)
         self.trades_df = pd.DataFrame()
         self.position_map = {}
         self.current_symbol = None
-        self.output_content = "IBKR Module Active\nType 'help' or 'h' for a list of commands."
+        self.output_content = ""
         
         # Load target percentages from database
         self.target_percent = ibkr_db.fetch_symbol_targets()
@@ -1702,6 +1705,3 @@ class IBKRModule(Module):
 
     def get_output(self):
         return self.output_content
-
-    def get_prompt(self):
-        return "[prompt][IBKR] >> [/]"

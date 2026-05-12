@@ -1,9 +1,12 @@
 from base_module import Module
 
 class HomeModule(Module):
+    name = "HOME"
+    emoji = "🏠"
+
     def __init__(self, app):
         super().__init__(app)
-        self.output_content = "Welcome to TradeTools v3\nType 'help' or 'h' for a list of commands."
+        self.output_content = ""
 
     def handle_command(self, command):
         cmd = command.lower().strip()
@@ -28,6 +31,3 @@ class HomeModule(Module):
 
     def get_output(self):
         return self.output_content
-
-    def get_prompt(self):
-        return "[prompt][MAIN] >> [/]"

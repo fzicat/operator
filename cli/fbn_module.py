@@ -5,12 +5,15 @@ from base_module import Module
 from cli.db import fbn_db
 
 class FBNModule(Module):
+    name = "FBN"
+    emoji = "📊"
+
     def __init__(self, app):
         super().__init__(app)
         self.df = pd.DataFrame()
         self.monthly_df = pd.DataFrame()
         self.yearly_df = pd.DataFrame()
-        self.output_content = "FBN Module Active\nType 'help' or 'h' for a list of commands."
+        self.output_content = ""
         
         self.load_fbn_data()
 
@@ -495,6 +498,3 @@ class FBNModule(Module):
 
     def get_output(self):
         return self.output_content
-
-    def get_prompt(self):
-        return "[prompt][FBN] >> [/]"

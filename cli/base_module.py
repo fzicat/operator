@@ -1,4 +1,7 @@
 class Module:
+    name = "MODULE"
+    emoji = "•"
+
     def __init__(self, app):
         self.app = app
 
@@ -8,5 +11,5 @@ class Module:
     def get_output(self):
         raise NotImplementedError
 
-    def get_prompt(self):
-        return "[prompt]>> [/]"
+    def get_status(self):
+        return f"{self.emoji} {self.name}"

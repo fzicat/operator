@@ -6,8 +6,6 @@ import argparse
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from rich.console import Console
-from rich.layout import Layout
-from rich.panel import Panel
 from rich.text import Text
 from rich.theme import Theme
 
@@ -80,12 +78,8 @@ class TradeToolsApp:
 
     def authenticate(self) -> bool:
         """Prompt user for login credentials and authenticate with Supabase."""
-        self.console.clear()
-        self.console.print(Panel(
-            Text("TradeTools v3 - Login", justify="center", style="header.text"),
-            style="on #3c3836",
-            border_style="panel.border"
-        ))
+        self.console.print()
+        self.console.print("[header.text]TradeTools v3 - Login[/]")
         self.console.print()
 
         # If auto-login credentials provided, use them
@@ -142,34 +136,50 @@ class TradeToolsApp:
             from equity_module import EquityModule
             self.switch_module(EquityModule(self))
 
-    def get_layout(self):
-        layout = Layout()
-        layout.split(
-            Layout(name="header", size=3),
-            Layout(name="body")
-        )
+    def _render_prompt_block(self):
+        """Render status bar, top line, bottom line, then put cursor on prompt row."""
+        width = max(1, self.console.size.width - 1)
+        line = "─" * width
+        self.console.print()  # blank line above status bar
+        self.console.print(f"[bright_blue]{self.active_module.get_status()}[/]")
+        self.console.print(f"[bright_orange]{line}[/]")
 
-        # Header
-        header_text = Text("TradeTools v3", justify="center", style="header.text")
-        layout["header"].update(Panel(header_text, style="on #3c3836", border_style="panel.border"))
+        # Reserve next row for the bottom line, then bring cursor back up to prompt row
+        sys.stdout.write("\n")
+        self.console.print(f"[bright_orange]{line}[/]", end="")
+        sys.stdout.write("\x1b[1A\r")
+        sys.stdout.flush()
 
-        # Body
-        output_data = self.active_module.get_output()
-        # Handle both string (markup) and Renderable (like Table)
-        if isinstance(output_data, str):
-            content = Text.from_markup(output_data)
+        command = self.console.input("[bright_orange]❯[/] ")
+
+        # After Enter, cursor sits at start of the bottom-line row; move below it.
+        sys.stdout.write("\x1b[1B\r")
+        sys.stdout.flush()
+        return command
+
+    def _render_output(self):
+        """Print module output below the prompt block, without clearing screen."""
+        if self.skip_render:
+            # Module already printed directly during handle_command
+            self.skip_render = False
+            self.active_module.output_content = ""
+            return
+
+        output = self.active_module.get_output()
+        if output is None or output == "":
+            return
+
+        self.console.print()  # blank line before output
+        if isinstance(output, str):
+            self.console.print(Text.from_markup(output))
         else:
-            content = output_data if output_data else ""
+            self.console.print(output)
+        self.active_module.output_content = ""
 
-        body_panel = Panel(
-            content,
-            title="Output",
-            border_style="panel.border",
-            style="on #282828"
-        )
-        layout["body"].update(body_panel)
-
-        return layout
+    def _print_welcome(self):
+        self.console.print()
+        self.console.print("[bright_yellow]Welcome to TradeTools v3[/]")
+        self.console.print("Type [bright_orange]help[/] or [bright_orange]h[/] for a list of commands.")
 
     def run(self):
         # Authenticate before proceeding
@@ -184,25 +194,21 @@ class TradeToolsApp:
         if self.auto_module:
             self._switch_to_module(self.auto_module)
 
+        self._print_welcome()
+
         while self.running:
-            if not self.skip_render:
-                self.console.clear()
-                layout = self.get_layout()
-
-                # Print the layout taking up most of the screen
-                # Leave 1 line for the prompt
-                self.console.print(layout, height=self.console.height - 2)
-
-            self.skip_render = False
-
-
             try:
-                # Prompt loop
-                prompt = self.active_module.get_prompt()
-                command = self.console.input(prompt)
+                command = self._render_prompt_block()
                 self.process_command(command)
+                if not self.running:
+                    break
+                self._render_output()
             except KeyboardInterrupt:
                 self.quit()
+                break
+            except EOFError:
+                self.quit()
+                break
 
     def process_command(self, command):
         self.active_module.handle_command(command)
