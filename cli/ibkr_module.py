@@ -126,11 +126,28 @@ class IBKRModule(Module):
                     self.trades_df.at[idx, 'remaining_qty'] = qty_to_process
                     inventory[symbol].append({'idx': idx, 'qty': qty_to_process, 'price': price})
 
-    def process_mtm_update(self):
+    def process_mtm_update(self, skip_options: bool = False, verbose: bool = False):
         try:
-            result = quote_service.refresh_mtm_quotes(self.trades_df)
+            result = quote_service.refresh_mtm_quotes(self.trades_df, skip_options=skip_options)
             self.load_trades()
-            self.output_content = result.get('message', 'Quote refresh complete.')
+            message = result.get('message', 'Quote refresh complete.')
+            if verbose:
+                quotes = result.get('quotes', {}) or {}
+                lines = []
+                for quote in quotes.values():
+                    symbol = quote.get('symbol') if isinstance(quote, dict) else getattr(quote, 'symbol', None)
+                    mark = quote.get('mark') if isinstance(quote, dict) else getattr(quote, 'mark', None)
+                    if symbol is None:
+                        continue
+                    mark_str = f"{mark:.4f}" if isinstance(mark, (int, float)) else "n/a"
+                    lines.append(f"{symbol} -> {mark_str}")
+                lines.sort()
+                for line in lines:
+                    self.app.console.print(line)
+                self.app.console.print(message)
+                self.app.skip_render = True
+            else:
+                self.output_content = message
         except Exception as e:
             self.output_content = f"[error]Error fetching prices: {e}[/]"
 
@@ -350,6 +367,8 @@ class IBKRModule(Module):
         - I   | import     > Import daily trades
         - I W | import w   > Import weekly trades
         - M   | mtm        > Get Mark-to-Market Values
+        - MS  | mtm stock  > Get MTM Values (stocks only, skip options)
+        - MV  | mtm verbose > Get MTM Values (verbose, print each symbol -> price)
         - PF  | performance > Year performance in $ and %
         - SD  | stats day  > Daily PnL Stats
         - SW  | stats week > Weekly PnL Stats
@@ -375,6 +394,10 @@ class IBKRModule(Module):
         - QQ  | quit quit  > Exit the application'''
         elif cmd in ['m', 'mtm']:
             self.process_mtm_update()
+        elif cmd in ['ms', 'mtm stock', 'mtm stocks']:
+            self.process_mtm_update(skip_options=True)
+        elif cmd in ['mv', 'mtm verbose']:
+            self.process_mtm_update(verbose=True)
         elif cmd in ['sd', 'stats day']:
             self.stats_daily()
         elif cmd in ['sw', 'stats week']:

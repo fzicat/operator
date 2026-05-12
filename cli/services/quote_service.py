@@ -169,11 +169,11 @@ def _overlay_stale_from_existing(base_quote: QuoteRecord, existing: dict | None)
     return stale_quote
 
 
-def refresh_mtm_quotes(trades_df: pd.DataFrame | None = None) -> dict[str, Any]:
+def refresh_mtm_quotes(trades_df: pd.DataFrame | None = None, skip_options: bool = False) -> dict[str, Any]:
     prepared = prepare_trades(trades_df)
     contract_bundle = build_open_contracts(prepared)
     equities: list[EquityContract] = contract_bundle["equities"]
-    options: list[OptionContract] = contract_bundle["options"]
+    options: list[OptionContract] = [] if skip_options else contract_bundle["options"]
     invalids: list[InvalidContract] = contract_bundle["invalids"]
 
     requested_keys = [contract.contract_key for contract in equities + options if contract.contract_key]
