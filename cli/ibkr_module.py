@@ -1,5 +1,6 @@
 import csv
 import io
+from datetime import datetime, date
 from pathlib import Path
 
 import pandas as pd
@@ -16,6 +17,29 @@ from base_module import Module
 
 
 PERFORMANCE_FILE = Path(__file__).resolve().parent / "data" / "ibkr_performance_2026.csv"
+
+
+def _parse_option_expiry(row) -> date | None:
+    """Return option expiry date from a trade row (symbol like 'GOOGL 260618P00370000'), or None for non-options."""
+    symbol = row.get('symbol')
+    if isinstance(symbol, str):
+        parts = symbol.strip().split()
+        if len(parts) >= 2:
+            contract = parts[1]
+            if len(contract) >= 7 and contract[:6].isdigit():
+                try:
+                    return datetime.strptime(contract[:6], '%y%m%d').date()
+                except ValueError:
+                    pass
+    expiry = row.get('expiry')
+    if expiry:
+        digits = ''.join(ch for ch in str(expiry) if ch.isdigit())
+        if len(digits) == 8:
+            try:
+                return datetime.strptime(digits, '%Y%m%d').date()
+            except ValueError:
+                pass
+    return None
 
 class IBKRModule(Module):
     def __init__(self, app):
@@ -47,8 +71,10 @@ class IBKRModule(Module):
         # Initialize columns
         self.trades_df['realized_pnl'] = 0.0
         self.trades_df['remaining_qty'] = 0.0
+        self.trades_df['dte'] = pd.NA
+        self.trades_df['dit'] = pd.NA
 
-        # Inventory: symbol -> list of dicts {idx, qty, price}
+        # Inventory: symbol -> list of dicts {idx, qty, price, dt}
         inventory = {}
 
         for idx, row in self.trades_df.iterrows():
@@ -56,22 +82,29 @@ class IBKRModule(Module):
             qty = row['quantity']
             price = row['tradePrice']
             multiplier = row['multiplier']
-            
+
             # Ensure safe floats
             qty = float(qty) if qty is not None else 0.0
             price = float(price) if price is not None else 0.0
             multiplier = float(multiplier) if multiplier is not None else 1.0
+
+            trade_ts = pd.to_datetime(row['dateTime'], errors='coerce')
+            trade_date = trade_ts.date() if pd.notnull(trade_ts) else None
+
+            expiry_date = _parse_option_expiry(row)
+            if expiry_date and trade_date:
+                self.trades_df.at[idx, 'dte'] = (expiry_date - trade_date).days
 
             if symbol not in inventory:
                 inventory[symbol] = []
 
             # Determine if we are increasing or decreasing/closing position
             # We assume FIFO matching against opposite sign
-            
+
             # If inventory is empty, always open/add
             if not inventory[symbol]:
                 self.trades_df.at[idx, 'remaining_qty'] = qty
-                inventory[symbol].append({'idx': idx, 'qty': qty, 'price': price})
+                inventory[symbol].append({'idx': idx, 'qty': qty, 'price': price, 'dt': trade_date})
                 continue
 
             # Check head of inventory
@@ -79,52 +112,58 @@ class IBKRModule(Module):
             # Same sign means adding to position
             if (qty > 0 and head['qty'] > 0) or (qty < 0 and head['qty'] < 0):
                 self.trades_df.at[idx, 'remaining_qty'] = qty
-                inventory[symbol].append({'idx': idx, 'qty': qty, 'price': price})
+                inventory[symbol].append({'idx': idx, 'qty': qty, 'price': price, 'dt': trade_date})
             else:
                 # Opposite sign: Close/Reduce position
                 qty_to_process = qty # e.g. -100 (Sell)
                 total_pnl = 0.0
+                first_open_date = None
 
                 while qty_to_process != 0 and inventory[symbol]:
                     item = inventory[symbol][0]
                     open_qty = item['qty']   # e.g. 50 (Buy)
                     open_price = item['price']
                     open_idx = item['idx']
+                    if first_open_date is None:
+                        first_open_date = item.get('dt')
 
                     # Check match amount
                     # We are reducing open_qty by some amount
-                    # signs are opposite. 
-                    
+                    # signs are opposite.
+
                     if abs(qty_to_process) >= abs(open_qty):
                         # Fully consume this open lot
                         match_qty = -open_qty # The amount of the current trade used to close the open lot
-                        
+
                         term_pnl = -(price - open_price) * match_qty * multiplier
                         total_pnl += term_pnl
-                        
+
                         qty_to_process -= match_qty
-                        
+
                         # Update matched open lot
                         self.trades_df.at[open_idx, 'remaining_qty'] = 0
                         inventory[symbol].pop(0)
-                        
+
                     else:
                         # Partially consume open lot
                         term_pnl = -(price - open_price) * qty_to_process * multiplier
                         total_pnl += term_pnl
-                        
+
                         # Update Inventory item
                         item['qty'] += qty_to_process
                         self.trades_df.at[open_idx, 'remaining_qty'] = item['qty']
-                        
+
                         qty_to_process = 0
-                
+
                 self.trades_df.at[idx, 'realized_pnl'] = total_pnl
+
+                if first_open_date and trade_date:
+                    self.trades_df.at[idx, 'dit'] = (trade_date - first_open_date).days
 
                 # If we still have quantity left after closing everything, it becomes new position
                 if qty_to_process != 0:
                     self.trades_df.at[idx, 'remaining_qty'] = qty_to_process
-                    inventory[symbol].append({'idx': idx, 'qty': qty_to_process, 'price': price})
+                    inventory[symbol].append({'idx': idx, 'qty': qty_to_process, 'price': price, 'dt': trade_date})
 
     def process_mtm_update(self, skip_options: bool = False, verbose: bool = False):
         try:
@@ -721,6 +760,8 @@ class IBKRModule(Module):
                 tbl.add_column("Price", justify="right", style="green")
                 tbl.add_column("Comm", justify="right")
                 tbl.add_column("Realized PnL", justify="right")
+                tbl.add_column("DTE", justify="right", style="neutral_aqua")
+                tbl.add_column("DIT", justify="right", style="neutral_aqua")
                 return tbl
 
             def add_closing_options_rows(tbl, data_df):
@@ -728,7 +769,7 @@ class IBKRModule(Module):
                 for _, row in data_df.iterrows():
                     date_str = row['dateTime'].strftime('%Y-%m-%d %H:%M') if pd.notnull(row['dateTime']) else ""
                     self.position_map[row_idx] = row['tradeID']
-                    
+
                     realized_pnl = row.get('realized_pnl', 0.0)
                     if realized_pnl > 0:
                         pnl_str = f"[neutral_blue]{realized_pnl:.2f}[/neutral_blue]"
@@ -736,6 +777,9 @@ class IBKRModule(Module):
                         pnl_str = f"[bright_red]{realized_pnl:.2f}[/bright_red]"
                     else:
                         pnl_str = ""
+
+                    dte = row.get('dte')
+                    dit = row.get('dit')
 
                     tbl.add_row(
                         str(row_idx),
@@ -745,6 +789,8 @@ class IBKRModule(Module):
                         f"{row['tradePrice']:.2f}" if pd.notnull(row['tradePrice']) else "",
                         f"{row['ibCommission']:.2f}" if pd.notnull(row['ibCommission']) else "",
                         pnl_str,
+                        f"{int(dte)}" if pd.notnull(dte) else "",
+                        f"{int(dit)}" if pd.notnull(dit) else "",
                     )
                     row_idx += 1
 
@@ -761,6 +807,7 @@ class IBKRModule(Module):
                 tbl.add_column("Comm", justify="right")
                 tbl.add_column("Remaining Qty", justify="right", style="blue")
                 tbl.add_column("Credit", justify="right", style="blue")
+                tbl.add_column("DTE", justify="right", style="neutral_aqua")
                 tbl.add_column("Delta", justify="right", style="yellow")
                 tbl.add_column("Und Price", justify="right", style="yellow")
                 return tbl
@@ -772,6 +819,7 @@ class IBKRModule(Module):
                     self.position_map[row_idx] = row['tradeID']
                     rem_qty = row.get('remaining_qty', 0.0)
                     row_style = "dim italic" if apply_dim_style and rem_qty == 0 else None
+                    dte = row.get('dte')
 
                     tbl.add_row(
                         str(row_idx),
@@ -782,6 +830,7 @@ class IBKRModule(Module):
                         f"{row['ibCommission']:.2f}" if pd.notnull(row['ibCommission']) else "",
                         f"{rem_qty:.0f}" if rem_qty != 0 else "",
                         f"{row.get('credit', 0.0):.2f}" if row.get('credit', 0) != 0 else "",
+                        f"{int(dte)}" if pd.notnull(dte) else "",
                         f"{row.get('delta', 0.0):.4f}" if pd.notnull(row.get('delta')) else "",
                         f"{row.get('und_price', 0.0):.2f}" if pd.notnull(row.get('und_price')) else "",
                         style=row_style
@@ -914,12 +963,16 @@ class IBKRModule(Module):
             table.add_column("O/C", justify="center")
             table.add_column("PnL", justify="right", style="bold red")
             table.add_column("Rem Qty", justify="right", style="blue")
+            table.add_column("DTE", justify="right", style="neutral_aqua")
+            table.add_column("DIT", justify="right", style="neutral_aqua")
             table.add_column("Delta", justify="right", style="yellow")
             table.add_column("Und Price", justify="right", style="yellow")
 
             for _, row in df.iterrows():
                 pnl = row.get('realized_pnl', 0.0)
                 rem_qty = row.get('remaining_qty', 0.0)
+                dte = row.get('dte')
+                dit = row.get('dit')
 
                 table.add_row(
                     pd.to_datetime(row['dateTime']).strftime('%Y-%m-%d %H:%M') if pd.notnull(row['dateTime']) else "",
@@ -931,6 +984,8 @@ class IBKRModule(Module):
                     str(row['openCloseIndicator']),
                     f"{pnl:.2f}" if pnl != 0 else "",
                     f"{rem_qty:.0f}" if rem_qty != 0 else "",
+                    f"{int(dte)}" if pd.notnull(dte) else "",
+                    f"{int(dit)}" if pd.notnull(dit) else "",
                     f"{row.get('delta', 0.0):.4f}" if pd.notnull(row.get('delta')) else "",
                     f"{row.get('und_price', 0.0):.2f}" if pd.notnull(row.get('und_price')) else ""
                 )

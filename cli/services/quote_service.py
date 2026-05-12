@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import date, datetime
 from typing import Any
 
 import pandas as pd
@@ -28,6 +29,29 @@ UNAVAILABLE_STATUSES = {
 }
 
 
+def parse_option_expiry(row: Any) -> date | None:
+    """Return option expiry date from a trade row (symbol like 'GOOGL 260618P00370000'), or None for non-options."""
+    symbol = row.get("symbol") if hasattr(row, "get") else None
+    if isinstance(symbol, str):
+        parts = symbol.strip().split()
+        if len(parts) >= 2:
+            contract = parts[1]
+            if len(contract) >= 7 and contract[:6].isdigit():
+                try:
+                    return datetime.strptime(contract[:6], "%y%m%d").date()
+                except ValueError:
+                    pass
+    expiry = row.get("expiry") if hasattr(row, "get") else None
+    if expiry:
+        digits = "".join(ch for ch in str(expiry) if ch.isdigit())
+        if len(digits) == 8:
+            try:
+                return datetime.strptime(digits, "%Y%m%d").date()
+            except ValueError:
+                pass
+    return None
+
+
 def calculate_pnl(trades_df: pd.DataFrame) -> pd.DataFrame:
     if trades_df.empty:
         return trades_df.copy()
@@ -35,8 +59,10 @@ def calculate_pnl(trades_df: pd.DataFrame) -> pd.DataFrame:
     df = trades_df.copy()
     df["realized_pnl"] = 0.0
     df["remaining_qty"] = 0.0
+    df["dte"] = pd.NA
+    df["dit"] = pd.NA
 
-    inventory: dict[str, list[dict[str, float | int]]] = {}
+    inventory: dict[str, list[dict[str, Any]]] = {}
 
     for idx, row in df.iterrows():
         symbol = row["symbol"]
@@ -44,28 +70,38 @@ def calculate_pnl(trades_df: pd.DataFrame) -> pd.DataFrame:
         price = float(row["tradePrice"] or 0.0)
         multiplier = float(row["multiplier"] or 1.0)
 
+        trade_ts = pd.to_datetime(row["dateTime"], errors="coerce")
+        trade_date = trade_ts.date() if pd.notnull(trade_ts) else None
+
+        expiry_date = parse_option_expiry(row)
+        if expiry_date and trade_date:
+            df.at[idx, "dte"] = (expiry_date - trade_date).days
+
         if symbol not in inventory:
             inventory[symbol] = []
 
         if not inventory[symbol]:
             df.at[idx, "remaining_qty"] = qty
-            inventory[symbol].append({"idx": idx, "qty": qty, "price": price})
+            inventory[symbol].append({"idx": idx, "qty": qty, "price": price, "dt": trade_date})
             continue
 
         head = inventory[symbol][0]
         if (qty > 0 and head["qty"] > 0) or (qty < 0 and head["qty"] < 0):
             df.at[idx, "remaining_qty"] = qty
-            inventory[symbol].append({"idx": idx, "qty": qty, "price": price})
+            inventory[symbol].append({"idx": idx, "qty": qty, "price": price, "dt": trade_date})
             continue
 
         qty_to_process = qty
         total_pnl = 0.0
+        first_open_date: date | None = None
 
         while qty_to_process != 0 and inventory[symbol]:
             item = inventory[symbol][0]
             open_qty = float(item["qty"])
             open_price = float(item["price"])
             open_idx = int(item["idx"])
+            if first_open_date is None:
+                first_open_date = item.get("dt")
 
             if abs(qty_to_process) >= abs(open_qty):
                 match_qty = -open_qty
@@ -81,9 +117,12 @@ def calculate_pnl(trades_df: pd.DataFrame) -> pd.DataFrame:
 
         df.at[idx, "realized_pnl"] = total_pnl
 
+        if first_open_date and trade_date:
+            df.at[idx, "dit"] = (trade_date - first_open_date).days
+
         if qty_to_process != 0:
             df.at[idx, "remaining_qty"] = qty_to_process
-            inventory[symbol].append({"idx": idx, "qty": qty_to_process, "price": price})
+            inventory[symbol].append({"idx": idx, "qty": qty_to_process, "price": price, "dt": trade_date})
 
     return df
 
