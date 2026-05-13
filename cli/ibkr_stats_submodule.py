@@ -282,7 +282,20 @@ class StatsSubModule(SubModule):
             ax.set_xticks(x[::step])
             ax.set_xticklabels([d.strftime('%Y-%m-%d') for d in data.index[::step]], rotation=45, ha='right')
             ax.grid(True, axis='y')
-            ax.legend()
+
+            ax2 = ax.twinx()
+            totals = data['call'].values + data['put'].values
+            ax2.plot(x, totals, color=GRUVBOX['blue'], linewidth=2,
+                     marker='o', markersize=3, markerfacecolor=GRUVBOX['blue'],
+                     markeredgecolor=GRUVBOX['blue'], label='Total')
+            ax2.set_ylabel("Total Premium ($)", color=GRUVBOX['blue'])
+            ax2.tick_params(axis='y', colors=GRUVBOX['blue'])
+            ax2.spines['right'].set_color(GRUVBOX['blue'])
+
+            lines1, labels1 = ax.get_legend_handles_labels()
+            lines2, labels2 = ax2.get_legend_handles_labels()
+            ax.legend(lines1 + lines2, labels1 + labels2)
+
             self._show("Outstanding Premium")
         except Exception as e:
             self.output_content = f"[error]Plot error: {e}[/]"
