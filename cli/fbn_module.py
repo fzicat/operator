@@ -51,6 +51,21 @@ class FBNModule(Module):
         else:
             self.app.console.print("[error]No FBN data found.[/]")
 
+    def _apply_arg_filter(self, arg):
+        portfolio_by_shortcut = {'g': 'Gestion FZ', 'p': 'Personnel'}
+        custom_filters = {
+            'f': ['MARGE', 'REER', 'CELI', 'REEE', 'CRI', 'GFZ CAD', 'GFZ USD'],
+            'm': ['MM MARGE', 'MM CELI'],
+        }
+        if arg in custom_filters:
+            self.account_filter = sorted(custom_filters[arg])
+            return True
+        portfolio = portfolio_by_shortcut.get(arg)
+        if portfolio is None:
+            return False
+        self.account_filter = sorted(a['name'] for a in self.accounts if a['portfolio'] == portfolio)
+        return True
+
     def _filtered_df(self):
         if self.df.empty or not self.account_filter:
             return self.df
@@ -97,6 +112,11 @@ class FBNModule(Module):
 
     def handle_command(self, command):
         cmd = command.lower().strip()
+        tokens = cmd.split()
+        arg = None
+        if len(tokens) >= 2 and tokens[0] in ('lm', 'ly', 'fa'):
+            cmd = tokens[0]
+            arg = tokens[1]
         if cmd in ['q', 'quit']:
             # Local import to avoid circular dependency
             from home_module import HomeModule
@@ -105,18 +125,42 @@ class FBNModule(Module):
             self.app.quit()
         elif cmd in ['h', 'help']:
             self.output_content = '''FBN commands:
-        - LM  | list monthly > List monthly stats
-        - LY  | list yearly  > List yearly stats
-        - FA  | filter account > Multi-select account filter
-        - Q   | quit         > Return to main menu
-        - QQ  | quit quit    > Exit the application'''
+        - LM  | list monthly        > List monthly stats
+        - LY  | list yearly         > List yearly stats
+        - LMA | list monthly assets > List all accounts separately, monthly
+        - LYA | list yearly assets  > List all accounts separately, yearly
+        - FA  | filter account      > Multi-select account filter
+        - FR  | filter reset        > Clear the account filter
+        - Q   | quit                > Return to main menu
+        - QQ  | quit quit           > Exit the application
+
+LM, LY and FA accept an optional filter argument:
+        - p : Personnal
+        - g : Gestion FZ
+        - f : Francois
+        - m : Marie-Pierre'''
         elif cmd in ['fa', 'filter account']:
-            self.filter_accounts()
+            if arg:
+                if self._apply_arg_filter(arg):
+                    self.output_content = f"[success]Account filter set: {', '.join(self.account_filter)}[/]"
+                else:
+                    self.output_content = f"[error]Unknown filter shortcut: {arg} (use 'g', 'p', 'f', or 'm')[/]"
+            else:
+                self.filter_accounts()
+        elif cmd in ['fr', 'filter reset']:
+            self.account_filter = []
+            self.output_content = "[success]Account filter cleared.[/]"
         elif cmd in ['lm', 'list monthly']:
+            if arg and not self._apply_arg_filter(arg):
+                self.output_content = f"[error]Unknown filter shortcut: {arg} (use 'g', 'p', 'f', or 'm')[/]"
+                return
             self.list_monthly()
         elif cmd in ['lma', 'list monthly assets']:
             self.list_monthly_assets()
         elif cmd in ['ly', 'list yearly']:
+            if arg and not self._apply_arg_filter(arg):
+                self.output_content = f"[error]Unknown filter shortcut: {arg} (use 'g', 'p', 'f', or 'm')[/]"
+                return
             self.list_yearly()
         elif cmd in ['lya', 'list yearly assets']:
             self.list_yearly_assets()
@@ -143,7 +187,7 @@ class FBNModule(Module):
             table.add_column("PnL", justify="right")
             table.add_column("Pct", justify="right")
 
-            for _, row in monthly_df.iterrows():
+            for _, row in monthly_df.tail(90).iterrows():
                 date_str = row['date'].strftime('%Y-%m-%d')
                 
                 deposit = row['deposit']
@@ -170,11 +214,10 @@ class FBNModule(Module):
             # If it's too long, main.py layout handles scrolling? No, rich layout doesn't scroll natively without a pager.
             # ibkr_module used `self.app.console.print(table)` and `skip_render=True` for long lists. 
             # Given 10 years of monthly data ~ 120 rows, it might be long.
-            
-            self.app.console.clear()
+
             self.app.console.print(table)
             self.app.skip_render = True
-            
+
         except Exception as e:
             self.output_content = f"[error]Error listing monthly stats: {e}[/]"
 
@@ -233,8 +276,7 @@ class FBNModule(Module):
                 f"[{total_pnl_style}]{total_pnl:,.2f}[/{total_pnl_style}]",
                 "-"
             )
-            
-            self.app.console.clear()
+
             self.app.console.print(table)
             self.app.skip_render = True
             
@@ -269,7 +311,7 @@ class FBNModule(Module):
             # Add Total column
             table.add_column("Total", justify="right", style="bold magenta")
 
-            for date, row in pivot_df.iterrows():
+            for date, row in pivot_df.tail(90).iterrows():
                 row_data = [date.strftime('%Y-%m-%d')]
                 total_assets = 0
                 for col in final_columns:
@@ -283,7 +325,6 @@ class FBNModule(Module):
                 row_data.append(f"{total_assets:,.2f}")
                 table.add_row(*row_data)
 
-            self.app.console.clear()
             self.app.console.print(table)
             self.app.skip_render = True
 
@@ -339,7 +380,6 @@ class FBNModule(Module):
                 row_data.append(f"{total_assets:,.2f}")
                 table.add_row(*row_data)
 
-            self.app.console.clear()
             self.app.console.print(table)
             self.app.skip_render = True
 
