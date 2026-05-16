@@ -1,13 +1,9 @@
-import os
-import sys
-import select
-import termios
-import tty
 import pandas as pd
 from rich.table import Table
 from rich.console import Group, Console
 from base_module import Module
 from cli.db import fbn_db
+from tui import multi_select
 
 class FBNModule(Module):
     name = "FBN"
@@ -540,7 +536,8 @@ LM, LY and FA accept an optional filter argument:
             self.output_content = "[info]No accounts available to filter.[/]"
             return
 
-        result = self._multi_select(
+        result = multi_select(
+            self.app.console,
             accounts,
             preselected=self.account_filter,
             title="Select accounts to filter on",
@@ -557,59 +554,6 @@ LM, LY and FA accept an optional filter argument:
         else:
             self.output_content = "[success]Account filter cleared.[/]"
         self.app.skip_render = False
-
-    def _multi_select(self, options, preselected=None, title="Select"):
-        """Interactive multi-select. Returns list of chosen options, or None if cancelled."""
-        if not sys.stdin.isatty():
-            self.app.console.print("[error]Interactive picker requires a TTY.[/]")
-            return None
-
-        selected = set(preselected or [])
-        cursor = 0
-
-        def render():
-            self.app.console.clear()
-            self.app.console.print(f"[bold]{title}[/]")
-            self.app.console.print("[dim]↑/↓ navigate · Space toggle · Enter confirm · Esc/q cancel[/]")
-            self.app.console.print()
-            for i, opt in enumerate(options):
-                mark = "[X]" if opt in selected else "[ ]"
-                prefix = "›" if i == cursor else " "
-                style = "bright_yellow" if i == cursor else "base"
-                self.app.console.print(f"[{style}]{prefix} {mark} {opt}[/]")
-
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            while True:
-                render()
-                tty.setraw(fd)
-                try:
-                    b = os.read(fd, 1)
-                    if b == b'\x1b':
-                        r, _, _ = select.select([fd], [], [], 0.05)
-                        if r:
-                            b += os.read(fd, 2)
-                    ch = b.decode('utf-8', errors='replace')
-                finally:
-                    termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-
-                if ch == '\x1b[A':
-                    cursor = (cursor - 1) % len(options)
-                elif ch == '\x1b[B':
-                    cursor = (cursor + 1) % len(options)
-                elif ch == ' ':
-                    opt = options[cursor]
-                    if opt in selected:
-                        selected.remove(opt)
-                    else:
-                        selected.add(opt)
-                elif ch in ('\r', '\n'):
-                    return [o for o in options if o in selected]
-                elif ch in ('\x1b', 'q', '\x03'):
-                    return None
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
     def get_output(self):
         return self.output_content
