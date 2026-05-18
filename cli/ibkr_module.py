@@ -1295,6 +1295,27 @@ class IBKRModule(Module):
             color = "dark4"
         return f"[{color}]{diff:.2f}[/{color}]"
 
+    def _fmt_diff_pct(self, mtm_pct, target_pct):
+        """Format the Diff % column (MTM% / TGT%) with color based on thresholds."""
+        if target_pct == 0 or mtm_pct == 0:
+            return ""
+        ratio = mtm_pct / target_pct
+        if ratio > 1.5:
+            color = "bright_aqua"
+        elif ratio > 1.25:
+            color = "neutral_aqua"
+        elif ratio > 1.1:
+            color = "faded_aqua"
+        elif ratio < 0.5:
+            color = "bright_orange"
+        elif ratio < 0.75:
+            color = "neutral_orange"
+        elif ratio < 0.9:
+            color = "faded_orange"
+        else:
+            color = "dark4"
+        return f"[{color}]{round(ratio * 100)}[/{color}]"
+
     def list_all_positions(self, order_by='mtm', ascending=False):
         try:
             if self.trades_df.empty:
@@ -1321,6 +1342,7 @@ class IBKRModule(Module):
             table.add_column("Tgt %", justify="right", style="neutral_aqua")
             table.add_column(_hdr("Tgt S", "t"), justify="right", style="neutral_aqua")
             table.add_column(_hdr("Diff", "d"), justify="right", style="light4")
+            table.add_column("Diff %", justify="right", style="light4")
             table.add_column("Unrlzd PnL", justify="right")
             table.add_column(_hdr("Qty", "q"), justify="right", style="neutral_purple")
             table.add_column(_hdr("Call", "c"), justify="right", style="neutral_purple")
@@ -1444,6 +1466,7 @@ class IBKRModule(Module):
                     f"{row['target_pct']:.2f}%" if row['target_pct'] != 0 else "",
                     f"{tgt_shares:,}" if tgt_shares != 0 else "",
                     self._fmt_diff(mtm_pct - target_pct),
+                    self._fmt_diff_pct(mtm_pct, target_pct),
                     fmt_pnl(row['unrlzd_pnl']),
                     f"{row['s_qty']:.0f}" if row['s_qty'] != 0 else "",
                     f"{row['c_qty']:.0f}" if row['c_qty'] != 0 else "",
@@ -1465,6 +1488,7 @@ class IBKRModule(Module):
                 f"{total_target_pct:.2f}%" if total_target_pct != 0 else "",
                 "",  # Tgt S column - no total
                 "",  # Diff column - no total
+                "",  # Diff % column - no total
                 fmt_pnl(total_unrlzd_pnl),
                 f"{total_s_qty:.0f}",
                 f"{total_c_qty:.0f}",
@@ -1570,6 +1594,7 @@ class IBKRModule(Module):
             table.add_column("MTM %", justify="right", style="neutral_blue")
             table.add_column("Tgt %", justify="right", style="neutral_aqua")
             table.add_column("Diff", justify="right", style="light4")
+            table.add_column("Diff %", justify="right", style="light4")
             table.add_column("Unrlzd PnL", justify="right")
             table.add_column("Call", justify="right", style="neutral_purple")
             table.add_column("Put", justify="right", style="neutral_purple")
@@ -1595,6 +1620,7 @@ class IBKRModule(Module):
                     f"{mtm_pct:.2f}%" if mtm_pct != 0 else "",
                     f"{r['target_pct']:.2f}%" if r['target_pct'] != 0 else "",
                     self._fmt_diff(mtm_pct - r['target_pct']),
+                    self._fmt_diff_pct(mtm_pct, r['target_pct']),
                     fmt_pnl(r['unrlzd_pnl']),
                     f"{r['c_qty']:.0f}" if r['c_qty'] != 0 else "",
                     f"{r['p_qty']:.0f}" if r['p_qty'] != 0 else "",
@@ -1611,6 +1637,7 @@ class IBKRModule(Module):
                 f"{total_mtm:,.2f}",
                 f"{total_mtm / total_mtm * 100:.2f}%" if total_mtm != 0 else "",
                 f"{total_target_pct:.2f}%" if total_target_pct != 0 else "",
+                "",
                 "",
                 fmt_pnl(total_unrlzd_pnl),
                 f"{total_c_qty:.0f}",
@@ -1677,7 +1704,7 @@ class IBKRModule(Module):
             writer = csv.writer(buf)
             writer.writerow([
                 "Symbol", "Book Price", "Book Value", "MTM Value", "MTM %",
-                "Tgt %", "Tgt S", "Diff", "Unrlzd PnL", "Qty", "Call", "Put",
+                "Tgt %", "Tgt S", "Diff", "Diff %", "Unrlzd PnL", "Qty", "Call", "Put",
                 "S Rlzd PnL", "C Rlzd PnL", "P Rlzd PnL", "T Rlzd PnL",
             ])
 
@@ -1690,6 +1717,7 @@ class IBKRModule(Module):
                 sp = r['share_price']
                 tgt_s = round(total_mtm * tgt / 100 / sp) if tgt and sp else 0
                 diff = mtm_pct - tgt
+                diff_pct = (mtm_pct / tgt * 100) if tgt and mtm_pct else 0
                 t_pnl = r['s_pnl'] + r['c_pnl'] + r['p_pnl']
                 writer.writerow([
                     r['symbol'],
@@ -1700,6 +1728,7 @@ class IBKRModule(Module):
                     num(tgt),
                     tgt_s if tgt_s else "",
                     num(diff),
+                    f"{round(diff_pct)}" if diff_pct else "",
                     num(r['unrlzd_pnl']),
                     f"{r['s_qty']:.0f}" if r['s_qty'] else "",
                     f"{r['c_qty']:.0f}" if r['c_qty'] else "",
