@@ -430,6 +430,7 @@ class IBKRModule(Module):
         - LS  | list symbol > List all positions (by Symbol)
         - LQ  | list qty    > List all positions (by Quantity)
         - LD  | list diff   > List all positions (by Diff)
+        - LDR | list diff % > List all positions (by Diff %)
         - LT  | list target > List all positions (by Tgt S)
         - LC  | list call   > List all positions (by Call qty)
         - LP  | list put    > List all positions (by Put qty)
@@ -492,6 +493,8 @@ class IBKRModule(Module):
             self.list_all_positions(order_by='s_qty', ascending=False)
         elif cmd in ['ld', 'list diff']:
             self.list_all_positions(order_by='diff', ascending=True)
+        elif cmd in ['ldr', 'list diff %', 'list diff pct']:
+            self.list_all_positions(order_by='diff_pct', ascending=True)
         elif cmd in ['lt', 'list target']:
             self.list_all_positions(order_by='tgt_s', ascending=False)
         elif cmd in ['lc', 'list call']:
@@ -1433,6 +1436,13 @@ class IBKRModule(Module):
             # Sort by diff (needs total_mtm, so done after totals)
             if order_by == 'diff':
                 data_rows.sort(key=lambda x: (x['mtm'] / total_mtm * 100 if total_mtm != 0 and x['mtm'] != 0 else 0) - x['target_pct'], reverse=not ascending)
+            elif order_by == 'diff_pct':
+                def _diff_pct(x):
+                    mtm_pct = x['mtm'] / total_mtm * 100 if total_mtm != 0 and x['mtm'] != 0 else 0
+                    if x['target_pct'] == 0 or mtm_pct == 0:
+                        return float('inf') if ascending else float('-inf')
+                    return mtm_pct / x['target_pct']
+                data_rows.sort(key=_diff_pct, reverse=not ascending)
             elif order_by == 'tgt_s':
                 def _tgt_s(x):
                     if x['target_pct'] and x['share_price']:
