@@ -7,4 +7,5 @@ cli/.venv/
 
 t.bat
 t.sh
-
+o.bat
+o.sh

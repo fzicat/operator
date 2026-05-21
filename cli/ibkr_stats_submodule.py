@@ -60,6 +60,7 @@ class StatsSubModule(SubModule):
         - PW  | plot week  > Plot weekly PnL (bar)
         - PC  | plot cum   > Plot cumulative PnL (line)
         - OP  | outstanding premium > Plot outstanding short option premium (bar)
+        - PCSP| plot csp   > Plot cash secured put exposure over time (line)
         - H   | help       > Show this message
         - Q   | quit       > Return to IBKR module
         - QQ  | quit quit  > Exit the application'''
@@ -75,6 +76,8 @@ class StatsSubModule(SubModule):
             self._plot_cumulative()
         elif cmd in ('op', 'outstanding premium'):
             self._plot_outstanding_premium()
+        elif cmd in ('pcsp', 'plot csp'):
+            self._plot_csp()
         elif cmd in ('qq', 'quit quit'):
             self.app.quit()
         elif cmd == "":
@@ -297,6 +300,84 @@ class StatsSubModule(SubModule):
             ax.legend(lines1 + lines2, labels1 + labels2)
 
             self._show("Outstanding Premium")
+        except Exception as e:
+            self.output_content = f"[error]Plot error: {e}[/]"
+
+    def _csp_series(self):
+        df = self.parent.trades_df
+        if df.empty:
+            return pd.Series(dtype=float)
+        df = df.copy()
+        df['dateTime'] = pd.to_datetime(df['dateTime']).dt.tz_localize(None)
+        df = df[df['putCall'] == 'P'].sort_values('dateTime')
+        if df.empty:
+            return pd.Series(dtype=float)
+
+        inventory = {}
+        start = pd.Timestamp('2026-01-01').normalize()
+        end = pd.Timestamp.now().normalize()
+        all_dates = pd.date_range(start=start, end=end, freq='D')
+        all_dates = all_dates[all_dates.dayofweek < 5]
+
+        events = df.to_dict('records')
+        ev_idx = 0
+        rows = []
+
+        for d in all_dates:
+            cutoff = d + pd.Timedelta(days=1)
+            while ev_idx < len(events) and events[ev_idx]['dateTime'] < cutoff:
+                t = events[ev_idx]
+                ev_idx += 1
+                symbol = t['symbol']
+                try:
+                    qty = float(t['quantity'])
+                    strike = float(t['strike'])
+                except (TypeError, ValueError):
+                    continue
+                oc = t.get('openCloseIndicator')
+
+                if oc == 'O' and qty < 0:
+                    inventory.setdefault(symbol, []).append({'qty': abs(qty), 'strike': strike})
+                elif oc == 'C' and qty > 0 and symbol in inventory:
+                    remaining = qty
+                    lots = inventory[symbol]
+                    while remaining > 0 and lots:
+                        lot = lots[0]
+                        if lot['qty'] <= remaining + 1e-9:
+                            remaining -= lot['qty']
+                            lots.pop(0)
+                        else:
+                            lot['qty'] -= remaining
+                            remaining = 0
+
+            csp = 0.0
+            for lots in inventory.values():
+                for lot in lots:
+                    csp += lot['qty'] * lot['strike'] * 100
+            rows.append((d, csp))
+
+        return pd.Series(dict(rows))
+
+    def _plot_csp(self):
+        try:
+            csp = self._csp_series()
+            if csp.empty:
+                self.output_content = "[info]No data to plot.[/]"
+                return
+            import matplotlib.pyplot as plt
+            apply_gruvbox_style()
+            fig, ax = plt.subplots(figsize=(11, 5))
+            ax.plot(csp.index, csp.values, color=GRUVBOX['orange'], linewidth=2,
+                    marker='o', markersize=3, markerfacecolor=GRUVBOX['yellow'],
+                    markeredgecolor=GRUVBOX['orange'])
+            ax.fill_between(csp.index, csp.values, 0,
+                            color=GRUVBOX['orange'], alpha=0.18)
+            ax.axhline(0, color=GRUVBOX['fg'], linewidth=0.8)
+            ax.set_title("Cash Secured Put Exposure")
+            ax.set_ylabel("CSP ($)")
+            ax.grid(True, axis='y')
+            fig.autofmt_xdate()
+            self._show("CSP")
         except Exception as e:
             self.output_content = f"[error]Plot error: {e}[/]"
 
