@@ -219,6 +219,13 @@ export default function IBKRPage() {
           >
             PnL
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => router.push("/ibkr/mtm")}
+          >
+            MTM
+          </Button>
         </div>
       </div>
 
