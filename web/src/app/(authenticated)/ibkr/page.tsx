@@ -173,15 +173,6 @@ export default function IBKRPage() {
       ),
     },
     {
-      key: "unrealizedPnl",
-      header: "Unrlzd PnL",
-      sortable: true,
-      align: "right" as const,
-      render: (p: Position) => (
-        <NumericCell value={p.unrealizedPnl} format="currency" colorCode />
-      ),
-    },
-    {
       key: "stockQty",
       header: "Stock",
       sortable: true,
@@ -205,33 +196,6 @@ export default function IBKRPage() {
       className: "text-[var(--gruvbox-purple)]",
       render: (p: Position) => <NumericCell value={p.putQty} />,
     },
-    {
-      key: "stockPnl",
-      header: "Stk PnL",
-      sortable: true,
-      align: "right" as const,
-      render: (p: Position) => (
-        <NumericCell value={p.stockPnl} format="currency" colorCode />
-      ),
-    },
-    {
-      key: "callPnl",
-      header: "Call PnL",
-      sortable: true,
-      align: "right" as const,
-      render: (p: Position) => (
-        <NumericCell value={p.callPnl} format="currency" colorCode />
-      ),
-    },
-    {
-      key: "putPnl",
-      header: "Put PnL",
-      sortable: true,
-      align: "right" as const,
-      render: (p: Position) => (
-        <NumericCell value={p.putPnl} format="currency" colorCode />
-      ),
-    },
   ];
 
   return (
@@ -247,6 +211,13 @@ export default function IBKRPage() {
             onClick={() => router.push("/ibkr/stats/daily")}
           >
             Stats
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => router.push("/ibkr/pnl")}
+          >
+            PnL
           </Button>
         </div>
       </div>
