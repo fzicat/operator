@@ -10,7 +10,8 @@
       "Bash(npm run build:*)",
       "Bash(python -m py_compile cli/ibkr_stats_submodule.py)",
       "Bash(timeout 30 python ./cli/main.py)",
-      "Bash(python3 -c \"import supabase\")"
+      "Bash(python3 -c \"import supabase\")",
+      "Bash(npx --no-install tsc --noEmit)"
     ]
   }
 }

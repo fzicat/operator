@@ -24,8 +24,6 @@ export default function IBKRPage() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [totals, setTotals] = useState<ReturnType<typeof calculateTotals> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [importing, setImporting] = useState(false);
-  const [updatingMtm, setUpdatingMtm] = useState(false);
   const [sortKey, setSortKey] = useState<string | null>("mtm");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
 
@@ -93,35 +91,6 @@ export default function IBKRPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const handleImport = async () => {
-    try {
-      setImporting(true);
-      // Call the import API endpoint
-      const res = await fetch("/api/ibkr/import", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Import failed");
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Import failed");
-    } finally {
-      setImporting(false);
-    }
-  };
-
-  const handleUpdateMtm = async () => {
-    try {
-      setUpdatingMtm(true);
-      const res = await fetch("/api/ibkr/mtm", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "MTM update failed");
-      await loadData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "MTM update failed");
-    } finally {
-      setUpdatingMtm(false);
-    }
-  };
 
   const handleSort = useCallback((key: string) => {
     if (sortKey === key) {
@@ -272,29 +241,6 @@ export default function IBKRPage() {
           IBKR Positions
         </h1>
         <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleImport}
-            loading={importing}
-          >
-            Import
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleUpdateMtm}
-            loading={updatingMtm}
-          >
-            Update MTM
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => router.push("/ibkr/trades")}
-          >
-            Trades
-          </Button>
           <Button
             variant="secondary"
             size="sm"

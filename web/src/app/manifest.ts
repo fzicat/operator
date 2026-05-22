@@ -2,8 +2,8 @@ import { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
     return {
-        name: 'TradeTools',
-        short_name: 'TradeTools',
+        name: 'Operator',
+        short_name: 'Operator',
         description: 'Trading portfolio management application',
         start_url: '/',
         display: 'standalone',

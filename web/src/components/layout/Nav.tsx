@@ -25,7 +25,7 @@ export function Nav() {
               href="/ibkr"
               className="text-[var(--gruvbox-orange)] font-bold text-lg mr-6 hover:text-[var(--gruvbox-yellow)] transition-colors"
             >
-              TradeTools
+              Operator
             </Link>
 
             {navItems.map((item) => (

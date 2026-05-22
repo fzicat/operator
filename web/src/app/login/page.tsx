@@ -48,7 +48,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm p-8">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-[var(--gruvbox-orange)] mb-2">
-            TradeTools
+            Operator
           </h1>
           <p className="text-[var(--gruvbox-fg4)]">
             Trading portfolio management

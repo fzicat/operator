@@ -15,7 +15,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TradeTools",
+  title: "Operator",
   description: "Trading portfolio management application",
 };
 
