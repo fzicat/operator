@@ -9,6 +9,7 @@ import { calculatePnL } from "@/lib/utils/fifo";
 import { Table, NumericCell } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { IBKRMenu } from "@/components/layout/IBKRMenu";
 import { formatDate, getDayName, addDaysToDateStr, getDayOfWeek, parseAsNY } from "@/lib/utils/format";
 
 export default function DailyStatsPage() {
@@ -135,10 +136,8 @@ export default function DailyStatsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
-            Back
-          </Button>
+        <div className="flex items-center gap-2">
+          <IBKRMenu />
           <h1 className="text-xl font-semibold text-[var(--gruvbox-orange)]">
             Daily Stats
           </h1>

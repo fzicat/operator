@@ -12,8 +12,8 @@ import {
   calculatePositions,
 } from "@/lib/utils/fifo";
 import { Table, NumericCell } from "@/components/ui/Table";
-import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { IBKRMenu } from "@/components/layout/IBKRMenu";
 
 type SortDirection = "asc" | "desc";
 
@@ -181,10 +181,8 @@ export default function IBKRMtmPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
-            Back
-          </Button>
+        <div className="flex items-center gap-2">
+          <IBKRMenu />
           <h1 className="text-xl font-semibold text-[var(--gruvbox-orange)]">
             IBKR MTM
           </h1>

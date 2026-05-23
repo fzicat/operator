@@ -13,8 +13,8 @@ import {
   calculateTotals,
 } from "@/lib/utils/fifo";
 import { Table, NumericCell } from "@/components/ui/Table";
-import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { IBKRMenu } from "@/components/layout/IBKRMenu";
 
 type SortDirection = "asc" | "desc";
 
@@ -201,31 +201,11 @@ export default function IBKRPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-semibold text-[var(--gruvbox-orange)]">
-          IBKR Positions
-        </h1>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => router.push("/ibkr/stats/daily")}
-          >
-            Stats
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => router.push("/ibkr/pnl")}
-          >
-            PnL
-          </Button>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => router.push("/ibkr/mtm")}
-          >
-            MTM
-          </Button>
+        <div className="flex items-center gap-2">
+          <IBKRMenu />
+          <h1 className="text-xl font-semibold text-[var(--gruvbox-orange)]">
+            IBKR Positions
+          </h1>
         </div>
       </div>
 
