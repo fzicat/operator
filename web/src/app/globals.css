@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Gruvbox Dark Theme */
+/* Gruvbox Dark Theme (default) */
 :root {
   --gruvbox-bg: #282828;
   --gruvbox-bg-hard: #1d2021;
@@ -36,6 +36,41 @@
 
   --background: var(--gruvbox-bg);
   --foreground: var(--gruvbox-fg);
+}
+
+/* Gruvbox Light Theme — inverts bg/fg, uses "faded" accent colors for contrast on light bg */
+:root[data-theme="light"] {
+  --gruvbox-bg: #fbf1c7;
+  --gruvbox-bg-hard: #f9f5d7;
+  --gruvbox-bg-soft: #f2e5bc;
+  --gruvbox-bg1: #ebdbb2;
+  --gruvbox-bg2: #d5c4a1;
+  --gruvbox-bg3: #bdae93;
+  --gruvbox-bg4: #a89984;
+
+  --gruvbox-fg: #3c3836;
+  --gruvbox-fg0: #282828;
+  --gruvbox-fg1: #3c3836;
+  --gruvbox-fg2: #504945;
+  --gruvbox-fg3: #665c54;
+  --gruvbox-fg4: #7c6f64;
+
+  --gruvbox-red: #9d0006;
+  --gruvbox-green: #79740e;
+  --gruvbox-yellow: #b57614;
+  --gruvbox-blue: #076678;
+  --gruvbox-purple: #8f3f71;
+  --gruvbox-aqua: #427b58;
+  --gruvbox-orange: #af3a03;
+  --gruvbox-gray: #7c6f64;
+
+  --gruvbox-red-dim: #cc241d;
+  --gruvbox-green-dim: #98971a;
+  --gruvbox-yellow-dim: #d79921;
+  --gruvbox-blue-dim: #458588;
+  --gruvbox-purple-dim: #b16286;
+  --gruvbox-aqua-dim: #689d6a;
+  --gruvbox-orange-dim: #d65d0e;
 }
 
 @theme inline {
