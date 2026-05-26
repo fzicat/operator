@@ -1348,6 +1348,9 @@ class IBKRModule(Module):
             table.add_column(_hdr("Tgt S", "t"), justify="right", style="neutral_aqua")
             table.add_column(_hdr("Diff", "d"), justify="right", style="light4")
             table.add_column("Diff %", justify="right", style="light4")
+            table.add_column("S Unr PnL", justify="right")
+            table.add_column("C Unr PnL", justify="right")
+            table.add_column("P Unr PnL", justify="right")
             table.add_column("Unrlzd PnL", justify="right")
             table.add_column(_hdr("Qty", "q"), justify="right", style="neutral_purple")
             table.add_column(_hdr("Call", "c"), justify="right", style="neutral_purple")
@@ -1376,8 +1379,11 @@ class IBKRModule(Module):
                  
                  # Get share price for target shares calculation
                  share_price = stock_df['mtm_price'].max() if not stock_df.empty else 0.0
-                 unrlzd_pnl = group['unrealized_pnl'].sum()
-                 
+                 s_unrlzd = stock_df['unrealized_pnl'].sum()
+                 c_unrlzd = call_df['unrealized_pnl'].sum()
+                 p_unrlzd = put_df['unrealized_pnl'].sum()
+                 unrlzd_pnl = s_unrlzd + c_unrlzd + p_unrlzd
+
                  s_qty = stock_df['remaining_qty'].sum()
                  c_qty = call_df['remaining_qty'].sum()
                  p_qty = put_df['remaining_qty'].sum()
@@ -1393,6 +1399,9 @@ class IBKRModule(Module):
                         'book_price': book_price,
                         'value': value,
                         'mtm': mtm,
+                        's_unrlzd': s_unrlzd,
+                        'c_unrlzd': c_unrlzd,
+                        'p_unrlzd': p_unrlzd,
                         'unrlzd_pnl': unrlzd_pnl,
                         's_qty': s_qty,
                         'c_qty': c_qty,
@@ -1424,6 +1433,9 @@ class IBKRModule(Module):
             # Calculate totals
             total_value = sum(row['value'] for row in data_rows)
             total_mtm = sum(row['mtm'] for row in data_rows)
+            total_s_unrlzd = sum(row['s_unrlzd'] for row in data_rows)
+            total_c_unrlzd = sum(row['c_unrlzd'] for row in data_rows)
+            total_p_unrlzd = sum(row['p_unrlzd'] for row in data_rows)
             total_unrlzd_pnl = sum(row['unrlzd_pnl'] for row in data_rows)
             total_s_qty = sum(row['s_qty'] for row in data_rows)
             total_c_qty = sum(row['c_qty'] for row in data_rows)
@@ -1479,6 +1491,9 @@ class IBKRModule(Module):
                     f"{tgt_shares:,}" if tgt_shares != 0 else "",
                     self._fmt_diff(mtm_pct - target_pct),
                     self._fmt_diff_pct(mtm_pct, target_pct),
+                    fmt_pnl(row['s_unrlzd']),
+                    fmt_pnl(row['c_unrlzd']),
+                    fmt_pnl(row['p_unrlzd']),
                     fmt_pnl(row['unrlzd_pnl']),
                     f"{row['s_qty']:.0f}" if row['s_qty'] != 0 else "",
                     f"{row['c_qty']:.0f}" if row['c_qty'] != 0 else "",
@@ -1501,6 +1516,9 @@ class IBKRModule(Module):
                 "",  # Tgt S column - no total
                 "",  # Diff column - no total
                 "",  # Diff % column - no total
+                fmt_pnl(total_s_unrlzd),
+                fmt_pnl(total_c_unrlzd),
+                fmt_pnl(total_p_unrlzd),
                 fmt_pnl(total_unrlzd_pnl),
                 f"{total_s_qty:.0f}",
                 f"{total_c_qty:.0f}",
@@ -1534,7 +1552,10 @@ class IBKRModule(Module):
                 stock_credit_sum = stock_df['credit'].sum() if not stock_df.empty else 0.0
                 value = stock_credit_sum * -1
                 mtm = stock_df['mtm_value'].sum() + call_df['mtm_value'].sum() + put_df['mtm_value'].sum()
-                unrlzd_pnl = group['unrealized_pnl'].sum()
+                s_unrlzd = stock_df['unrealized_pnl'].sum()
+                c_unrlzd = call_df['unrealized_pnl'].sum()
+                p_unrlzd = put_df['unrealized_pnl'].sum()
+                unrlzd_pnl = s_unrlzd + c_unrlzd + p_unrlzd
 
                 s_qty = stock_df['remaining_qty'].sum()
                 c_qty = call_df['remaining_qty'].sum()
@@ -1550,6 +1571,9 @@ class IBKRModule(Module):
                         'basket': self.symbol_basket.get(symbol) or "(none)",
                         'value': value,
                         'mtm': mtm,
+                        's_unrlzd': s_unrlzd,
+                        'c_unrlzd': c_unrlzd,
+                        'p_unrlzd': p_unrlzd,
                         'unrlzd_pnl': unrlzd_pnl,
                         'c_qty': c_qty,
                         'p_qty': p_qty,
@@ -1568,6 +1592,9 @@ class IBKRModule(Module):
                         'basket': b,
                         'value': 0.0,
                         'mtm': 0.0,
+                        's_unrlzd': 0.0,
+                        'c_unrlzd': 0.0,
+                        'p_unrlzd': 0.0,
                         'unrlzd_pnl': 0.0,
                         'c_qty': 0.0,
                         'p_qty': 0.0,
@@ -1579,6 +1606,9 @@ class IBKRModule(Module):
                 agg = basket_map[b]
                 agg['value'] += r['value']
                 agg['mtm'] += r['mtm']
+                agg['s_unrlzd'] += r['s_unrlzd']
+                agg['c_unrlzd'] += r['c_unrlzd']
+                agg['p_unrlzd'] += r['p_unrlzd']
                 agg['unrlzd_pnl'] += r['unrlzd_pnl']
                 agg['c_qty'] += r['c_qty']
                 agg['p_qty'] += r['p_qty']
@@ -1591,6 +1621,9 @@ class IBKRModule(Module):
 
             total_value = sum(r['value'] for r in data_rows)
             total_mtm = sum(r['mtm'] for r in data_rows)
+            total_s_unrlzd = sum(r['s_unrlzd'] for r in data_rows)
+            total_c_unrlzd = sum(r['c_unrlzd'] for r in data_rows)
+            total_p_unrlzd = sum(r['p_unrlzd'] for r in data_rows)
             total_unrlzd_pnl = sum(r['unrlzd_pnl'] for r in data_rows)
             total_c_qty = sum(r['c_qty'] for r in data_rows)
             total_p_qty = sum(r['p_qty'] for r in data_rows)
@@ -1607,6 +1640,9 @@ class IBKRModule(Module):
             table.add_column("Tgt %", justify="right", style="neutral_aqua")
             table.add_column("Diff", justify="right", style="light4")
             table.add_column("Diff %", justify="right", style="light4")
+            table.add_column("S Unr PnL", justify="right")
+            table.add_column("C Unr PnL", justify="right")
+            table.add_column("P Unr PnL", justify="right")
             table.add_column("Unrlzd PnL", justify="right")
             table.add_column("Call", justify="right", style="neutral_purple")
             table.add_column("Put", justify="right", style="neutral_purple")
@@ -1633,6 +1669,9 @@ class IBKRModule(Module):
                     f"{r['target_pct']:.2f}%" if r['target_pct'] != 0 else "",
                     self._fmt_diff(mtm_pct - r['target_pct']),
                     self._fmt_diff_pct(mtm_pct, r['target_pct']),
+                    fmt_pnl(r['s_unrlzd']),
+                    fmt_pnl(r['c_unrlzd']),
+                    fmt_pnl(r['p_unrlzd']),
                     fmt_pnl(r['unrlzd_pnl']),
                     f"{r['c_qty']:.0f}" if r['c_qty'] != 0 else "",
                     f"{r['p_qty']:.0f}" if r['p_qty'] != 0 else "",
@@ -1651,6 +1690,9 @@ class IBKRModule(Module):
                 f"{total_target_pct:.2f}%" if total_target_pct != 0 else "",
                 "",
                 "",
+                fmt_pnl(total_s_unrlzd),
+                fmt_pnl(total_c_unrlzd),
+                fmt_pnl(total_p_unrlzd),
                 fmt_pnl(total_unrlzd_pnl),
                 f"{total_c_qty:.0f}",
                 f"{total_p_qty:.0f}",
