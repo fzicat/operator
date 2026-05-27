@@ -437,8 +437,8 @@ class IBKRModule(Module):
         - LZ  | list total  > List all positions (by Total Realized PnL)
         - LB  | list basket > List positions grouped by Basket
         - CSV | list csv    > Print positions as CSV (sorted by Symbol)
-        - T   | trades     > List trades (last 7 days)
-        - TT  | trades all > List all trades
+        - T   | trades     > List trades (last 7 days) [oo: opening options only]
+        - TT  | trades all > List all trades [oo: opening options only]
         - CA  | calls assigned > List assigned call trades with assignment cost
         - R   | reload     > Reload trades from DB
         - P x | p <sym>    > List positions for a symbol
@@ -465,8 +465,12 @@ class IBKRModule(Module):
             self.debug()
         elif cmd in ['tt', 'trades all']:
             self.list_all_trades()
+        elif cmd in ['tt oo', 'trades all oo']:
+            self.list_all_trades(opening_options_only=True)
         elif cmd in ['t', 'trades']:
             self.list_all_trades(days=7)
+        elif cmd in ['t oo', 'trades oo']:
+            self.list_all_trades(days=7, opening_options_only=True)
         elif cmd in ['ca', 'calls assigned', 'assigned calls']:
             self.list_assigned_calls()
         elif cmd in ['r', 'reload']:
@@ -956,7 +960,7 @@ class IBKRModule(Module):
         # Skip the next render cycle in main loop to prevent clearing the screen
         self.app.skip_render = True
 
-    def list_all_trades(self, days=None):
+    def list_all_trades(self, days=None, opening_options_only=False):
         try:
             if self.trades_df.empty:
                 self.output_content = "[info]No trades loaded.[/]"
@@ -971,8 +975,15 @@ class IBKRModule(Module):
             else:
                 title = "All Trades"
 
+            if opening_options_only:
+                df = df[df['putCall'].isin(['C', 'P']) & (df['openCloseIndicator'] == 'O')]
+                title = f"{title} (opening options only)"
+
             if df.empty:
-                self.output_content = f"[info]No trades in the last {days} days.[/]"
+                if opening_options_only:
+                    self.output_content = "[info]No opening option trades found.[/]"
+                else:
+                    self.output_content = f"[info]No trades in the last {days} days.[/]"
                 return
 
             table = Table(title=title, expand=True)
