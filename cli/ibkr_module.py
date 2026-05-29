@@ -1350,6 +1350,7 @@ class IBKRModule(Module):
                 return f"{label[:idx]}[bold underline]{label[idx]}[/]{label[idx+1:]}"
 
             is_lz = order_by == 't_pnl'
+            is_lq = order_by == 's_qty'
 
             table = Table(title="All Positions", expand=False, row_styles=["", "on #1d2021"])
             table.add_column(_hdr("Symbol", "s"), style="neutral_yellow")
@@ -1364,6 +1365,22 @@ class IBKRModule(Module):
                 table.add_column("C Rlzd PnL", justify="right")
                 table.add_column("P Rlzd PnL", justify="right")
                 table.add_column(_hdr("T Rlzd PnL", "z"), justify="right")
+            elif is_lq:
+                table.add_column(_hdr("Tgt Q", "t"), justify="right", style="neutral_aqua")
+                table.add_column(_hdr("Qty", "q"), justify="right", style="neutral_purple")
+                table.add_column(_hdr("Call", "c"), justify="right", style="neutral_purple")
+                table.add_column(_hdr("Put", "p"), justify="right", style="neutral_purple")
+                table.add_column("Tgt %", justify="right", style="neutral_aqua")
+                table.add_column(_hdr("Diff", "d"), justify="right", style="light4")
+                table.add_column("Diff %", justify="right", style="light4")
+                table.add_column("Book Price", justify="right", style="dark4")
+                table.add_column(_hdr("Book Value", "v"), justify="right", style="neutral_yellow")
+                table.add_column(_hdr("MTM Value", "m"), justify="right", style="neutral_blue")
+                table.add_column("MTM %", justify="right", style="neutral_blue")
+                table.add_column("S Unr PnL", justify="right")
+                table.add_column("C Unr PnL", justify="right")
+                table.add_column("P Unr PnL", justify="right")
+                table.add_column("T Unr PnL", justify="right")
             else:
                 table.add_column("Book Price", justify="right", style="dark4")
                 table.add_column(_hdr("Book Value", "v"), justify="right", style="neutral_yellow")
@@ -1516,6 +1533,25 @@ class IBKRModule(Module):
                         fmt_pnl(row['p_pnl']),
                         fmt_pnl(t_pnl)
                     )
+                elif is_lq:
+                    table.add_row(
+                        str(row['symbol']),
+                        f"{tgt_shares:,}" if tgt_shares != 0 else "",
+                        f"{row['s_qty']:.0f}" if row['s_qty'] != 0 else "",
+                        f"{row['c_qty']:.0f}" if row['c_qty'] != 0 else "",
+                        f"{row['p_qty']:.0f}" if row['p_qty'] != 0 else "",
+                        f"{row['target_pct']:.2f}%" if row['target_pct'] != 0 else "",
+                        self._fmt_diff(mtm_pct - target_pct),
+                        self._fmt_diff_pct(mtm_pct, target_pct),
+                        f"{row['book_price'] * -1:.2f}" if row['book_price'] != 0 else "",
+                        f"{row['value']:,.2f}" if row['value'] != 0 else "",
+                        f"{row['mtm']:,.2f}" if row['mtm'] != 0 else "",
+                        mtm_pct_str,
+                        fmt_pnl(row['s_unrlzd']),
+                        fmt_pnl(row['c_unrlzd']),
+                        fmt_pnl(row['p_unrlzd']),
+                        fmt_pnl(row['unrlzd_pnl']),
+                    )
                 else:
                     table.add_row(
                         str(row['symbol']),
@@ -1551,6 +1587,26 @@ class IBKRModule(Module):
                     fmt_pnl(total_c_pnl),
                     fmt_pnl(total_p_pnl),
                     fmt_pnl(total_s_pnl + total_c_pnl + total_p_pnl),
+                    style="bold"
+                )
+            elif is_lq:
+                table.add_row(
+                    "TOTAL",
+                    "",  # Tgt Q column - no total
+                    f"{total_s_qty:.0f}",
+                    f"{total_c_qty:.0f}",
+                    f"{total_p_qty:.0f}",
+                    f"{total_target_pct:.2f}%" if total_target_pct != 0 else "",
+                    "",  # Diff column - no total
+                    "",  # Diff % column - no total
+                    "",  # Book Price - no aggregate
+                    f"{total_value:,.2f}",
+                    f"{total_mtm:,.2f}",
+                    f"{total_mtm / total_mtm * 100:.2f}%" if total_mtm != 0 else "",
+                    fmt_pnl(total_s_unrlzd),
+                    fmt_pnl(total_c_unrlzd),
+                    fmt_pnl(total_p_unrlzd),
+                    fmt_pnl(total_unrlzd_pnl),
                     style="bold"
                 )
             else:
