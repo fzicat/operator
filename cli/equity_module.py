@@ -68,17 +68,18 @@ class EquityModule(Module):
             self.copy_entries_for_date()
         elif cmd in ['p', 'pivot']:
             self.show_pivot_tables()
-        elif cmd.startswith('e ') or cmd.startswith('edit '):
-            # Parse the line number
+        elif cmd == 'e' or cmd == 'edit' or cmd.startswith('e ') or cmd.startswith('edit '):
             parts = cmd.split()
-            if len(parts) == 2:
+            if len(parts) == 1:
+                self.prompt_edit_entry()
+            elif len(parts) == 2:
                 try:
                     line_num = int(parts[1])
                     self.edit_entry(line_num)
                 except ValueError:
                     self.output_content = "[error]Invalid line number.[/]"
             else:
-                self.output_content = "[error]Usage: e <line_number>[/]"
+                self.output_content = "[error]Usage: e [line_number][/]"
         elif cmd.startswith('d ') or cmd.startswith('delete '):
             # Parse the line number for delete
             parts = cmd.split()
@@ -319,6 +320,22 @@ class EquityModule(Module):
         
         self.app.skip_render = True
         self.output_content = "" # Cleared by direct print
+
+    def prompt_edit_entry(self):
+        """Re-render the table for the selected date and ask which row to edit."""
+        if self.current_date is None:
+            self.output_content = "[error]No date selected. Use 's' to select a date first.[/]"
+            return
+
+        self.show_table_for_date(self.current_date)
+
+        choice = self.app.console.input("\nEdit which # >> ")
+        try:
+            line_num = int(choice)
+        except ValueError:
+            self.output_content = "[error]Invalid line number.[/]"
+            return
+        self.edit_entry(line_num)
 
     def edit_entry(self, line_num):
         """Edit an existing entry by its display line number"""
