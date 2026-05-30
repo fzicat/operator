@@ -47,7 +47,8 @@ class EquityModule(Module):
         elif cmd in ['h', 'help']:
             self.output_content = '''Equity Commands:
     - a | add    : Add a new entry
-    - l | list   : List entries by date
+    - s | select : Select a date and list its entries
+    - l | list   : List entries for the selected date (selects one first if none)
     - e <number> : Edit an entry by its index
     - d <number> : Delete an entry by its index
     - c | copy   : Copy entries from one date to another
@@ -56,8 +57,13 @@ class EquityModule(Module):
     - qq         : Exit to prompt'''
         elif cmd in ['a', 'add']:
             self.add_entry()
+        elif cmd in ['s', 'select']:
+            self.select_date()
         elif cmd in ['l', 'list']:
-            self.list_unique_dates()
+            if self.current_date is not None:
+                self.show_table_for_date(self.current_date)
+            else:
+                self.select_date()
         elif cmd in ['c', 'copy']:
             self.copy_entries_for_date()
         elif cmd in ['p', 'pivot']:
@@ -88,6 +94,13 @@ class EquityModule(Module):
             pass
         else:
             self.output_content = f"Unknown command: {command}"
+
+    def get_status(self):
+        base = super().get_status()
+        if self.current_date is not None:
+            date_str = pd.to_datetime(self.current_date).strftime('%Y-%m-%d')
+            return f"{base} [{date_str}]"
+        return base
 
     def add_entry(self):
         self.app.console.clear()
@@ -181,7 +194,7 @@ class EquityModule(Module):
         self.load_equity_data()
         self.output_content = "Data updated."
 
-    def list_unique_dates(self):
+    def select_date(self):
         if self.equity_df.empty:
             self.output_content = "[info]No equity data found.[/]"
             return
@@ -438,9 +451,8 @@ class EquityModule(Module):
         else:
             self.output_content = "Edit cancelled."
         
-        # Clear the stored subset after editing
+        # Clear the stored subset after editing (date is kept for the status line)
         self.current_subset = None
-        self.current_date = None
 
     def copy_entries_for_date(self):
         """Copy all entries from a source date to a new target date with balance=0, rate=0"""
@@ -684,9 +696,8 @@ class EquityModule(Module):
         else:
             self.output_content = "Delete cancelled."
         
-        # Clear stored subset after deletion
+        # Clear stored subset after deletion (date is kept for the status line)
         self.current_subset = None
-        self.current_date = None
 
     def get_output(self):
         return self.output_content
