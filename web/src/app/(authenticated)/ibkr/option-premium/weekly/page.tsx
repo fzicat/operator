@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 import { supabase, toCamelCaseArray } from "@/lib/supabase";
 import { useError } from "@/lib/error-context";
 import { Trade, OptionPremiumWeekly } from "@/types";
-import { isOptionTrade, calculateClosedOpenPremium } from "@/lib/utils/fifo";
+import {
+  isOptionTrade,
+  calculateClosedOpenPremium,
+  calculateOutstandingPremiumByDay,
+  outstandingPremiumAsOf,
+} from "@/lib/utils/fifo";
 import { Table, NumericCell } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -55,6 +60,9 @@ export default function OptionPremiumWeeklyPage() {
       trades = trades.filter((t) => isOptionTrade(t));
       trades = calculateClosedOpenPremium(trades);
 
+      // Outstanding short option premium snapshots (CLI "OP" command)
+      const opPoints = calculateOutstandingPremiumByDay(trades);
+
       // Group by week ending Friday — extract local date, then map to Friday
       const weeklyMap: Record<string, { open: number; close: number; closedOpen: number }> = {};
       for (const trade of trades) {
@@ -94,12 +102,18 @@ export default function OptionPremiumWeeklyPage() {
       // Convert to array, filter to start from startWeek
       const result: OptionPremiumWeekly[] = Object.entries(weeklyMap)
         .filter(([weekEnding]) => weekEnding >= startWeek)
-        .map(([weekEnding, v]) => ({
-          weekEnding,
-          open: v.open,
-          close: v.close,
-          closedOpen: v.closedOpen,
-        }))
+        .map(([weekEnding, v]) => {
+          const op = outstandingPremiumAsOf(opPoints, weekEnding);
+          return {
+            weekEnding,
+            open: v.open,
+            close: v.close,
+            closedOpen: v.closedOpen,
+            opCall: op.call,
+            opPut: op.put,
+            opTotal: op.call + op.put,
+          };
+        })
         .sort((a, b) => b.weekEnding.localeCompare(a.weekEnding));
 
       const openTotal = result.reduce((sum, s) => sum + s.open, 0);
@@ -158,6 +172,33 @@ export default function OptionPremiumWeeklyPage() {
       align: "right" as const,
       render: (s: OptionPremiumWeekly) => (
         <NumericCell value={s.closedOpen} format="currency" colorCode />
+      ),
+    },
+    {
+      key: "opCall",
+      header: "Calls",
+      align: "right" as const,
+      className: "text-[var(--gruvbox-red)]",
+      render: (s: OptionPremiumWeekly) => (
+        <NumericCell value={s.opCall} format="currency" />
+      ),
+    },
+    {
+      key: "opPut",
+      header: "Puts",
+      align: "right" as const,
+      className: "text-[var(--gruvbox-green)]",
+      render: (s: OptionPremiumWeekly) => (
+        <NumericCell value={s.opPut} format="currency" />
+      ),
+    },
+    {
+      key: "opTotal",
+      header: "Total OP",
+      align: "right" as const,
+      className: "text-[var(--gruvbox-yellow)]",
+      render: (s: OptionPremiumWeekly) => (
+        <NumericCell value={s.opTotal} format="currency" />
       ),
     },
   ];

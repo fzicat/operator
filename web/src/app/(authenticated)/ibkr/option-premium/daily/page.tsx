@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 import { supabase, toCamelCaseArray } from "@/lib/supabase";
 import { useError } from "@/lib/error-context";
 import { Trade, OptionPremiumDaily } from "@/types";
-import { isOptionTrade, calculateClosedOpenPremium } from "@/lib/utils/fifo";
+import {
+  isOptionTrade,
+  calculateClosedOpenPremium,
+  calculateOutstandingPremiumByDay,
+  outstandingPremiumAsOf,
+} from "@/lib/utils/fifo";
 import { Table, NumericCell } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -44,6 +49,9 @@ export default function OptionPremiumDailyPage() {
       let trades = toCamelCaseArray<Trade>(tradesData || []);
       trades = trades.filter((t) => isOptionTrade(t));
       trades = calculateClosedOpenPremium(trades);
+
+      // Outstanding short option premium snapshots (CLI "OP" command)
+      const opPoints = calculateOutstandingPremiumByDay(trades);
 
       // Group by date — use parseAsNY to extract the local date
       const dailyMap: Record<string, { open: number; close: number; closedOpen: number }> = {};
@@ -96,12 +104,16 @@ export default function OptionPremiumDailyPage() {
           entry.close !== 0 ||
           entry.closedOpen !== 0
         ) {
+          const op = outstandingPremiumAsOf(opPoints, currentDateStr);
           result.push({
             date: currentDateStr,
             dayName: getDayName(currentDateStr),
             open: entry.open,
             close: entry.close,
             closedOpen: entry.closedOpen,
+            opCall: op.call,
+            opPut: op.put,
+            opTotal: op.call + op.put,
           });
           openTotal += entry.open;
           closeTotal += entry.close;
@@ -171,6 +183,33 @@ export default function OptionPremiumDailyPage() {
       align: "right" as const,
       render: (s: OptionPremiumDaily) => (
         <NumericCell value={s.closedOpen} format="currency" colorCode />
+      ),
+    },
+    {
+      key: "opCall",
+      header: "Calls",
+      align: "right" as const,
+      className: "text-[var(--gruvbox-red)]",
+      render: (s: OptionPremiumDaily) => (
+        <NumericCell value={s.opCall} format="currency" />
+      ),
+    },
+    {
+      key: "opPut",
+      header: "Puts",
+      align: "right" as const,
+      className: "text-[var(--gruvbox-green)]",
+      render: (s: OptionPremiumDaily) => (
+        <NumericCell value={s.opPut} format="currency" />
+      ),
+    },
+    {
+      key: "opTotal",
+      header: "Total OP",
+      align: "right" as const,
+      className: "text-[var(--gruvbox-yellow)]",
+      render: (s: OptionPremiumDaily) => (
+        <NumericCell value={s.opTotal} format="currency" />
       ),
     },
   ];

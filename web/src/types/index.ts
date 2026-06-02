@@ -124,6 +124,9 @@ export interface OptionPremiumDaily {
   open: number;
   close: number;
   closedOpen: number;
+  opCall: number;
+  opPut: number;
+  opTotal: number;
 }
 
 export interface OptionPremiumWeekly {
@@ -131,6 +134,9 @@ export interface OptionPremiumWeekly {
   open: number;
   close: number;
   closedOpen: number;
+  opCall: number;
+  opPut: number;
+  opTotal: number;
 }
 
 // FBN Types

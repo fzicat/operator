@@ -1,4 +1,5 @@
 import { MarketQuote, Position, Trade } from "@/types";
+import { parseAsNY } from "./format";
 
 interface InventoryItem {
   idx: number;
@@ -191,6 +192,109 @@ export function calculateClosedOpenPremium(trades: Trade[]): Trade[] {
     }
   }
 
+  return result;
+}
+
+export interface OutstandingPremiumPoint {
+  date: string; // YYYY-MM-DD — end-of-day outstanding state
+  call: number;
+  put: number;
+}
+
+function localDateStr(dateTime: string): string {
+  const d = parseAsNY(dateTime);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * Mirrors the CLI `OP` command (_outstanding_premium_series): the outstanding
+ * short option premium at the end of each day that had option activity.
+ *
+ * Short opens (sell-to-open, O + qty<0) add premium lots; buy-to-close
+ * (C + qty>0) consume them FIFO. Premium per contract is `price * multiplier`
+ * (always positive). Returns one snapshot per active day, in ascending date
+ * order; use `outstandingPremiumAsOf` to read the carried-forward balance for
+ * any date. Trades must be passed in chronological order.
+ */
+export function calculateOutstandingPremiumByDay(trades: Trade[]): OutstandingPremiumPoint[] {
+  const inventory: Record<
+    string,
+    { putCall: "C" | "P"; lots: { qty: number; premiumPerUnit: number }[] }
+  > = {};
+
+  const currentTotals = () => {
+    let call = 0;
+    let put = 0;
+    for (const info of Object.values(inventory)) {
+      const total = info.lots.reduce((s, l) => s + l.qty * l.premiumPerUnit, 0);
+      if (info.putCall === "C") call += total;
+      else put += total;
+    }
+    return { call, put };
+  };
+
+  const snapshots: OutstandingPremiumPoint[] = [];
+  let lastDate: string | null = null;
+
+  for (const trade of trades) {
+    const dateStr = localDateStr(trade.dateTime);
+
+    // Date advanced — finalize the previous day's end-of-day snapshot
+    if (lastDate !== null && dateStr !== lastDate) {
+      snapshots.push({ date: lastDate, ...currentTotals() });
+    }
+
+    const symbol = trade.symbol;
+    const qty = trade.quantity ?? 0;
+    const price = trade.tradePrice ?? 0;
+    const multiplier = trade.multiplier ?? 100;
+    const oc = trade.openCloseIndicator;
+    const putCall: "C" | "P" = (trade.putCall || "").toUpperCase().startsWith("C") ? "C" : "P";
+
+    if (oc === "O" && qty < 0) {
+      if (!inventory[symbol]) inventory[symbol] = { putCall, lots: [] };
+      inventory[symbol].lots.push({ qty: Math.abs(qty), premiumPerUnit: price * multiplier });
+    } else if (oc === "C" && qty > 0 && inventory[symbol]) {
+      let remaining = qty;
+      const lots = inventory[symbol].lots;
+      while (remaining > 0 && lots.length > 0) {
+        const lot = lots[0];
+        if (lot.qty <= remaining + 1e-9) {
+          remaining -= lot.qty;
+          lots.shift();
+        } else {
+          lot.qty -= remaining;
+          remaining = 0;
+        }
+      }
+    }
+
+    lastDate = dateStr;
+  }
+
+  if (lastDate !== null) {
+    snapshots.push({ date: lastDate, ...currentTotals() });
+  }
+
+  return snapshots;
+}
+
+/**
+ * Carried-forward outstanding premium as of a given date: the latest snapshot
+ * on or before `dateStr`. Assumes `points` is sorted ascending by date.
+ */
+export function outstandingPremiumAsOf(
+  points: OutstandingPremiumPoint[],
+  dateStr: string
+): { call: number; put: number } {
+  let result = { call: 0, put: 0 };
+  for (const p of points) {
+    if (p.date <= dateStr) result = { call: p.call, put: p.put };
+    else break;
+  }
   return result;
 }
 
