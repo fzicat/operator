@@ -116,6 +116,19 @@ export interface WeeklyStat {
   realizedPnl: number;
 }
 
+export interface OptionPremiumDaily {
+  date: string;
+  dayName: string;
+  open: number;
+  close: number;
+}
+
+export interface OptionPremiumWeekly {
+  weekEnding: string;
+  open: number;
+  close: number;
+}
+
 // FBN Types
 export interface FBNEntry {
   id?: number;
