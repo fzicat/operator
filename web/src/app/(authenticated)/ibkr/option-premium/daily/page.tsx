@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase, toCamelCaseArray } from "@/lib/supabase";
 import { useError } from "@/lib/error-context";
 import { Trade, OptionPremiumDaily } from "@/types";
-import { isOptionTrade } from "@/lib/utils/fifo";
+import { isOptionTrade, calculateClosedOpenPremium } from "@/lib/utils/fifo";
 import { Table, NumericCell } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -27,6 +27,7 @@ export default function OptionPremiumDailyPage() {
   const [stats, setStats] = useState<OptionPremiumDaily[]>([]);
   const [totalOpen, setTotalOpen] = useState(0);
   const [totalClose, setTotalClose] = useState(0);
+  const [totalClosedOpen, setTotalClosedOpen] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
@@ -42,16 +43,17 @@ export default function OptionPremiumDailyPage() {
 
       let trades = toCamelCaseArray<Trade>(tradesData || []);
       trades = trades.filter((t) => isOptionTrade(t));
+      trades = calculateClosedOpenPremium(trades);
 
       // Group by date — use parseAsNY to extract the local date
-      const dailyMap: Record<string, { open: number; close: number }> = {};
+      const dailyMap: Record<string, { open: number; close: number; closedOpen: number }> = {};
       for (const trade of trades) {
         const d = parseAsNY(trade.dateTime);
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, "0");
         const day = String(d.getDate()).padStart(2, "0");
         const dateStr = `${y}-${m}-${day}`;
-        if (!dailyMap[dateStr]) dailyMap[dateStr] = { open: 0, close: 0 };
+        if (!dailyMap[dateStr]) dailyMap[dateStr] = { open: 0, close: 0, closedOpen: 0 };
 
         const premium = tradePremium(trade);
         if (trade.openCloseIndicator === "O") {
@@ -59,6 +61,7 @@ export default function OptionPremiumDailyPage() {
         } else if (trade.openCloseIndicator === "C") {
           dailyMap[dateStr].close += premium;
         }
+        dailyMap[dateStr].closedOpen += trade.closed_open_premium ?? 0;
       }
 
       const dates = Object.keys(dailyMap).sort();
@@ -66,6 +69,7 @@ export default function OptionPremiumDailyPage() {
         setStats([]);
         setTotalOpen(0);
         setTotalClose(0);
+        setTotalClosedOpen(0);
         setLoading(false);
         return;
       }
@@ -78,22 +82,30 @@ export default function OptionPremiumDailyPage() {
       const result: OptionPremiumDaily[] = [];
       let openTotal = 0;
       let closeTotal = 0;
+      let closedOpenTotal = 0;
 
       let currentDateStr = minDateStr;
       while (currentDateStr <= maxDateStr) {
         const dayOfWeek = getDayOfWeek(currentDateStr);
-        const entry = dailyMap[currentDateStr] ?? { open: 0, close: 0 };
+        const entry = dailyMap[currentDateStr] ?? { open: 0, close: 0, closedOpen: 0 };
 
         // Include if weekday OR if has any premium activity
-        if ((dayOfWeek !== 0 && dayOfWeek !== 6) || entry.open !== 0 || entry.close !== 0) {
+        if (
+          (dayOfWeek !== 0 && dayOfWeek !== 6) ||
+          entry.open !== 0 ||
+          entry.close !== 0 ||
+          entry.closedOpen !== 0
+        ) {
           result.push({
             date: currentDateStr,
             dayName: getDayName(currentDateStr),
             open: entry.open,
             close: entry.close,
+            closedOpen: entry.closedOpen,
           });
           openTotal += entry.open;
           closeTotal += entry.close;
+          closedOpenTotal += entry.closedOpen;
         }
 
         currentDateStr = addDaysToDateStr(currentDateStr, 1);
@@ -105,6 +117,7 @@ export default function OptionPremiumDailyPage() {
       setStats(result);
       setTotalOpen(openTotal);
       setTotalClose(closeTotal);
+      setTotalClosedOpen(closedOpenTotal);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
@@ -152,6 +165,14 @@ export default function OptionPremiumDailyPage() {
         <NumericCell value={s.close} format="currency" colorCode />
       ),
     },
+    {
+      key: "closedOpen",
+      header: "Open Prem Closed",
+      align: "right" as const,
+      render: (s: OptionPremiumDaily) => (
+        <NumericCell value={s.closedOpen} format="currency" colorCode />
+      ),
+    },
   ];
 
   return (
@@ -194,7 +215,7 @@ export default function OptionPremiumDailyPage() {
             })}
           </span>
         </div>
-        <div className="flex justify-between items-center font-data">
+        <div className="flex justify-between items-center font-data mb-2">
           <span className="text-[var(--gruvbox-fg4)] font-semibold">TOTAL CLOSE</span>
           <span
             className={`text-lg font-bold ${totalClose >= 0
@@ -203,6 +224,20 @@ export default function OptionPremiumDailyPage() {
               }`}
           >
             {totalClose.toLocaleString("en-US", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </span>
+        </div>
+        <div className="flex justify-between items-center font-data">
+          <span className="text-[var(--gruvbox-fg4)] font-semibold">TOTAL OPEN PREM CLOSED</span>
+          <span
+            className={`text-lg font-bold ${totalClosedOpen >= 0
+              ? "text-[var(--gruvbox-blue)]"
+              : "text-[var(--gruvbox-orange)]"
+              }`}
+          >
+            {totalClosedOpen.toLocaleString("en-US", {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             })}

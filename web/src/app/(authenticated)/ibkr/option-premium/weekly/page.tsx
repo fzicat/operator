@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase, toCamelCaseArray } from "@/lib/supabase";
 import { useError } from "@/lib/error-context";
 import { Trade, OptionPremiumWeekly } from "@/types";
-import { isOptionTrade } from "@/lib/utils/fifo";
+import { isOptionTrade, calculateClosedOpenPremium } from "@/lib/utils/fifo";
 import { Table, NumericCell } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -37,6 +37,7 @@ export default function OptionPremiumWeeklyPage() {
   const [stats, setStats] = useState<OptionPremiumWeekly[]>([]);
   const [totalOpen, setTotalOpen] = useState(0);
   const [totalClose, setTotalClose] = useState(0);
+  const [totalClosedOpen, setTotalClosedOpen] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(async () => {
@@ -52,9 +53,10 @@ export default function OptionPremiumWeeklyPage() {
 
       let trades = toCamelCaseArray<Trade>(tradesData || []);
       trades = trades.filter((t) => isOptionTrade(t));
+      trades = calculateClosedOpenPremium(trades);
 
       // Group by week ending Friday — extract local date, then map to Friday
-      const weeklyMap: Record<string, { open: number; close: number }> = {};
+      const weeklyMap: Record<string, { open: number; close: number; closedOpen: number }> = {};
       for (const trade of trades) {
         const d = parseAsNY(trade.dateTime);
         const y = d.getFullYear();
@@ -62,7 +64,7 @@ export default function OptionPremiumWeeklyPage() {
         const day = String(d.getDate()).padStart(2, "0");
         const tradeDateStr = `${y}-${m}-${day}`;
         const weekStr = getWeekEndingFridayStr(tradeDateStr);
-        if (!weeklyMap[weekStr]) weeklyMap[weekStr] = { open: 0, close: 0 };
+        if (!weeklyMap[weekStr]) weeklyMap[weekStr] = { open: 0, close: 0, closedOpen: 0 };
 
         const premium = tradePremium(trade);
         if (trade.openCloseIndicator === "O") {
@@ -70,6 +72,7 @@ export default function OptionPremiumWeeklyPage() {
         } else if (trade.openCloseIndicator === "C") {
           weeklyMap[weekStr].close += premium;
         }
+        weeklyMap[weekStr].closedOpen += trade.closed_open_premium ?? 0;
       }
 
       // Start from the week of January 5, 2026 (ending Friday Jan 9)
@@ -83,7 +86,7 @@ export default function OptionPremiumWeeklyPage() {
         const lastWeek = allWeeks[allWeeks.length - 1];
         let currentWeek = startWeek;
         while (currentWeek <= lastWeek) {
-          if (!weeklyMap[currentWeek]) weeklyMap[currentWeek] = { open: 0, close: 0 };
+          if (!weeklyMap[currentWeek]) weeklyMap[currentWeek] = { open: 0, close: 0, closedOpen: 0 };
           currentWeek = addDaysToDateStr(currentWeek, 7);
         }
       }
@@ -95,15 +98,18 @@ export default function OptionPremiumWeeklyPage() {
           weekEnding,
           open: v.open,
           close: v.close,
+          closedOpen: v.closedOpen,
         }))
         .sort((a, b) => b.weekEnding.localeCompare(a.weekEnding));
 
       const openTotal = result.reduce((sum, s) => sum + s.open, 0);
       const closeTotal = result.reduce((sum, s) => sum + s.close, 0);
+      const closedOpenTotal = result.reduce((sum, s) => sum + s.closedOpen, 0);
 
       setStats(result);
       setTotalOpen(openTotal);
       setTotalClose(closeTotal);
+      setTotalClosedOpen(closedOpenTotal);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
     } finally {
@@ -144,6 +150,14 @@ export default function OptionPremiumWeeklyPage() {
       align: "right" as const,
       render: (s: OptionPremiumWeekly) => (
         <NumericCell value={s.close} format="currency" colorCode />
+      ),
+    },
+    {
+      key: "closedOpen",
+      header: "Open Prem Closed",
+      align: "right" as const,
+      render: (s: OptionPremiumWeekly) => (
+        <NumericCell value={s.closedOpen} format="currency" colorCode />
       ),
     },
   ];
@@ -188,7 +202,7 @@ export default function OptionPremiumWeeklyPage() {
             })}
           </span>
         </div>
-        <div className="flex justify-between items-center font-data">
+        <div className="flex justify-between items-center font-data mb-2">
           <span className="text-[var(--gruvbox-fg4)] font-semibold">TOTAL CLOSE</span>
           <span
             className={`text-lg font-bold ${totalClose >= 0
@@ -197,6 +211,20 @@ export default function OptionPremiumWeeklyPage() {
               }`}
           >
             {totalClose.toLocaleString("en-US", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </span>
+        </div>
+        <div className="flex justify-between items-center font-data">
+          <span className="text-[var(--gruvbox-fg4)] font-semibold">TOTAL OPEN PREM CLOSED</span>
+          <span
+            className={`text-lg font-bold ${totalClosedOpen >= 0
+              ? "text-[var(--gruvbox-blue)]"
+              : "text-[var(--gruvbox-orange)]"
+              }`}
+          >
+            {totalClosedOpen.toLocaleString("en-US", {
               minimumFractionDigits: 2,
               maximumFractionDigits: 2,
             })}

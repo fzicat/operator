@@ -128,6 +128,72 @@ export function calculatePnL(trades: Trade[]): Trade[] {
   return result;
 }
 
+/**
+ * For each closing trade, compute the original opening premium of the lots it
+ * closes, attributed to that closing trade (field `closed_open_premium`).
+ *
+ * Uses FIFO matching by symbol (same matching as calculatePnL). The opening
+ * premium per contract follows the same sign convention as `credit`/premium:
+ * sell-to-open yields a positive premium-per-contract, buy-to-open negative.
+ * Trades must be passed in chronological order.
+ */
+export function calculateClosedOpenPremium(trades: Trade[]): Trade[] {
+  const result = trades.map((trade) => ({ ...trade, closed_open_premium: 0 }));
+
+  // Per-symbol inventory of open lots: signed qty + premium per (absolute) contract
+  const inventory: Record<string, { qty: number; premiumPerContract: number }[]> = {};
+
+  for (let idx = 0; idx < result.length; idx++) {
+    const row = result[idx];
+    const symbol = row.symbol;
+    const qty = row.quantity ?? 0;
+    const price = row.tradePrice ?? 0;
+    const multiplier = row.multiplier ?? 1;
+
+    if (qty === 0) continue;
+
+    // -sign(qty) * price * multiplier — premium received per contract on opening
+    const premiumPerContract = (-qty * price * multiplier) / Math.abs(qty);
+
+    if (!inventory[symbol]) inventory[symbol] = [];
+
+    const head = inventory[symbol][0];
+
+    if (!head || (qty > 0 && head.qty > 0) || (qty < 0 && head.qty < 0)) {
+      // Opening (or adding to position in the same direction)
+      inventory[symbol].push({ qty, premiumPerContract });
+      continue;
+    }
+
+    // Opposite direction — closing existing lots FIFO
+    let qtyToProcess = qty;
+    let closedPremium = 0;
+
+    while (qtyToProcess !== 0 && inventory[symbol].length > 0) {
+      const item = inventory[symbol][0];
+
+      if (Math.abs(qtyToProcess) >= Math.abs(item.qty)) {
+        closedPremium += Math.abs(item.qty) * item.premiumPerContract;
+        qtyToProcess += item.qty; // opposite signs move toward zero
+        inventory[symbol].shift();
+      } else {
+        closedPremium += Math.abs(qtyToProcess) * item.premiumPerContract;
+        item.qty += qtyToProcess;
+        qtyToProcess = 0;
+      }
+    }
+
+    result[idx].closed_open_premium = closedPremium;
+
+    // Leftover quantity opens a new lot in the opposite direction
+    if (qtyToProcess !== 0) {
+      inventory[symbol].push({ qty: qtyToProcess, premiumPerContract });
+    }
+  }
+
+  return result;
+}
+
 export function calculateCredit(trades: Trade[]): Trade[] {
   return trades.map((trade) => {
     const multiplier = trade.multiplier ?? 1;

@@ -28,6 +28,8 @@ export interface Trade {
   mtm_price?: number | null;
   mtm_value?: number | null;
   unrealized_pnl?: number | null;
+  // Opening premium of the lots closed by this (closing) trade
+  closed_open_premium?: number;
 }
 
 export interface Position {
@@ -121,12 +123,14 @@ export interface OptionPremiumDaily {
   dayName: string;
   open: number;
   close: number;
+  closedOpen: number;
 }
 
 export interface OptionPremiumWeekly {
   weekEnding: string;
   open: number;
   close: number;
+  closedOpen: number;
 }
 
 // FBN Types
