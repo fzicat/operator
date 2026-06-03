@@ -15,6 +15,7 @@ import { Table, NumericCell } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { IBKRMenu } from "@/components/layout/IBKRMenu";
+import { OutstandingPremiumChart } from "@/components/ibkr/OutstandingPremiumChart";
 import { formatDate, getDayName, addDaysToDateStr, getDayOfWeek, parseAsNY } from "@/lib/utils/format";
 
 /**
@@ -231,6 +232,17 @@ export default function OptionPremiumDailyPage() {
           Weekly
         </Button>
       </div>
+
+      {stats.length > 0 && (
+        <div className="mb-4 p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
+          <OutstandingPremiumChart
+            data={[...stats]
+              .reverse()
+              .map((s) => ({ date: s.date, total: s.opTotal }))}
+            smaWindow={7}
+          />
+        </div>
+      )}
 
       <Table
         data={stats}
