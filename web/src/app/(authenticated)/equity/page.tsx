@@ -6,6 +6,7 @@ import { useError } from "@/lib/error-context";
 import { EquityEntry, EquitySummary } from "@/types";
 import { Table, NumericCell } from "@/components/ui/Table";
 import { Spinner } from "@/components/ui/Spinner";
+import { Select } from "@/components/ui/Select";
 import { formatDate } from "@/lib/utils/format";
 import { EquityMenu } from "@/components/layout/EquityMenu";
 
@@ -226,7 +227,7 @@ export default function EquityPage() {
     { key: "name", header: "Name" },
     {
       key: "balanceCad",
-      header: "Balance CAD",
+      header: "Balance Gross",
       align: "right" as const,
       className: "text-[var(--gruvbox-green)]",
       render: (s: EquitySummary) => <NumericCell value={s.balanceCad} format="currency" />,
@@ -240,6 +241,18 @@ export default function EquityPage() {
     },
   ];
 
+  const totalRow: EquitySummary = {
+    name: "Total",
+    balanceCad: totalCad,
+    balanceNet: totalNet,
+  };
+  const accountSummaryRows = [...accountSummary, totalRow];
+  const categorySummaryRows = [...categorySummary, totalRow];
+  const summaryRowClassName = (s: EquitySummary) =>
+    s.name === "Total"
+      ? "font-bold !bg-[var(--gruvbox-bg1)] border-t border-[var(--gruvbox-bg3)]"
+      : "";
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -249,26 +262,40 @@ export default function EquityPage() {
             Equity Overview
           </h1>
         </div>
+        <Select
+          options={uniqueDates.map((date) => ({
+            value: date,
+            label: formatDate(date),
+          }))}
+          value={selectedDate || ""}
+          onChange={(e) => setSelectedDate(e.target.value)}
+          className="w-auto"
+        />
       </div>
 
-      {/* Date Selector */}
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-[var(--gruvbox-fg3)] mb-2">
-          Select Date
-        </label>
-        <div className="flex flex-wrap gap-2">
-          {uniqueDates.slice(0, 10).map((date) => (
-            <button
-              key={date}
-              onClick={() => setSelectedDate(date)}
-              className={`px-3 py-1 rounded text-sm ${selectedDate === date
-                ? "bg-[var(--gruvbox-orange)] text-[var(--gruvbox-bg)]"
-                : "bg-[var(--gruvbox-bg1)] text-[var(--gruvbox-fg3)] hover:bg-[var(--gruvbox-bg2)]"
-                }`}
-            >
-              {formatDate(date)}
-            </button>
-          ))}
+      {/* Summaries */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--gruvbox-yellow)] mb-2">
+            By Account
+          </h2>
+          <Table
+            data={accountSummaryRows}
+            columns={summaryColumns}
+            keyExtractor={(s) => s.name}
+            rowClassName={summaryRowClassName}
+          />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--gruvbox-yellow)] mb-2">
+            By Category
+          </h2>
+          <Table
+            data={categorySummaryRows}
+            columns={summaryColumns}
+            keyExtractor={(s) => s.name}
+            rowClassName={summaryRowClassName}
+          />
         </div>
       </div>
 
@@ -299,30 +326,6 @@ export default function EquityPage() {
               {totalNet.toLocaleString("en-US", { minimumFractionDigits: 2 })}
             </span>
           </div>
-        </div>
-      </div>
-
-      {/* Summaries */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <h2 className="text-lg font-semibold text-[var(--gruvbox-yellow)] mb-2">
-            By Account
-          </h2>
-          <Table
-            data={accountSummary}
-            columns={summaryColumns}
-            keyExtractor={(s) => s.name}
-          />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-[var(--gruvbox-yellow)] mb-2">
-            By Category
-          </h2>
-          <Table
-            data={categorySummary}
-            columns={summaryColumns}
-            keyExtractor={(s) => s.name}
-          />
         </div>
       </div>
     </div>
