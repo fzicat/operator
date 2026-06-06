@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useError } from "@/lib/error-context";
 import { EquityEntry } from "@/types";
-import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { formatDate, formatCurrency } from "@/lib/utils/format";
+import { EquityMenu } from "@/components/layout/EquityMenu";
 
 interface PivotRow {
   date: string;
@@ -16,7 +15,6 @@ interface PivotRow {
 }
 
 export default function EquityPivotPage() {
-  const router = useRouter();
   const { setError } = useError();
   const [accountCadData, setAccountCadData] = useState<PivotRow[]>([]);
   const [categoryCadData, setCategoryCadData] = useState<PivotRow[]>([]);
@@ -212,10 +210,8 @@ export default function EquityPivotPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => router.back()}>
-            Back
-          </Button>
+        <div className="flex items-center gap-2">
+          <EquityMenu />
           <h1 className="text-xl font-semibold text-[var(--gruvbox-orange)]">
             Equity Pivot Tables
           </h1>

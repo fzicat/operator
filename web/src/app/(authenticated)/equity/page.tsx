@@ -1,19 +1,17 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useError } from "@/lib/error-context";
 import { EquityEntry, EquitySummary } from "@/types";
 import { Table, NumericCell } from "@/components/ui/Table";
-import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { formatDate } from "@/lib/utils/format";
+import { EquityMenu } from "@/components/layout/EquityMenu";
 
 type SortDirection = "asc" | "desc";
 
 export default function EquityPage() {
-  const router = useRouter();
   const { setError } = useError();
   const [entries, setEntries] = useState<EquityEntry[]>([]);
   const [accountSummary, setAccountSummary] = useState<EquitySummary[]>([]);
@@ -245,24 +243,11 @@ export default function EquityPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-semibold text-[var(--gruvbox-orange)]">
-          Equity Overview
-        </h1>
-        <div className="flex gap-2">
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => router.push("/equity/entry")}
-          >
-            Add Entry
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => router.push("/equity/pivot")}
-          >
-            Pivot Tables
-          </Button>
+        <div className="flex items-center gap-2">
+          <EquityMenu />
+          <h1 className="text-xl font-semibold text-[var(--gruvbox-orange)]">
+            Equity Overview
+          </h1>
         </div>
       </div>
 
