@@ -15,7 +15,9 @@
       "Bash(npx tsc *)",
       "Bash(echo \"exit=$?\")",
       "Bash(python -m py_compile cli/ibkr_module.py)",
-      "Bash(python -m py_compile /home/hermes/projects/operator/cli/ibkr_module.py)"
+      "Bash(python -m py_compile /home/hermes/projects/operator/cli/ibkr_module.py)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

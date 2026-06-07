@@ -274,7 +274,7 @@ export default function EquityPage() {
       </div>
 
       {/* Summaries */}
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div>
           <h2 className="text-lg font-semibold text-[var(--gruvbox-yellow)] mb-2">
             By Account
