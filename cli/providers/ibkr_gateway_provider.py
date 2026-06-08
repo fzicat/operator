@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from itertools import islice
 from typing import Any, Iterable, Sequence
 
@@ -18,6 +19,35 @@ from shared.ibkr_gateway_config import DEFAULT_IB_GATEWAY_CONFIG, IBGatewayConfi
 
 PERMISSION_ERROR_CODES = {10089, 10090, 10091}
 
+# Loggers ib_insync (and the ib_async fork) use to emit raw API error lines.
+_IB_LOGGER_NAMES = ("ib_insync.wrapper", "ib_async.wrapper")
+
+
+class _PermissionErrorLogFilter(logging.Filter):
+    """Drop ib_insync's raw permission-code error lines (10089/10090/10091).
+
+    These fire when an option market-data request also tries to pull the live
+    underlying / Greeks, which the account isn't entitled to (OPRA-only). We
+    already capture these codes in `_on_error` and report them per quote via
+    `QuoteRecord.status`, so the raw log line is redundant noise whenever the
+    OPRA quote still comes through — and a genuine "no data" outcome is still
+    surfaced through `permission_denied`.
+    """
+
+    _PREFIXES = tuple(f"Error {code}," for code in sorted(PERMISSION_ERROR_CODES))
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        return not any(prefix in message for prefix in self._PREFIXES)
+
+
+def _install_permission_error_log_filter() -> None:
+    """Attach the permission-error filter once to the ib_insync error loggers."""
+    for name in _IB_LOGGER_NAMES:
+        logger = logging.getLogger(name)
+        if not any(isinstance(f, _PermissionErrorLogFilter) for f in logger.filters):
+            logger.addFilter(_PermissionErrorLogFilter())
+
 
 class IBKRGatewayProvider:
     source = "ibkr"
@@ -34,6 +64,7 @@ class IBKRGatewayProvider:
             self._IB = IB
             self._Stock = Stock
             self._Option = Option
+            _install_permission_error_log_filter()
         except Exception as exc:  # pragma: no cover - depends on optional dep
             self._IB = None
             self._Stock = None
