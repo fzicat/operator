@@ -205,6 +205,31 @@ export interface EquitySummary {
   balanceNet: number;
 }
 
+// Bitcoin Types
+export interface BitcoinBuy {
+  id?: number;
+  exchange: string;
+  date: string;
+  date_on_chain: string | null;
+  quantity: number;
+  cost_cad: number;
+  account: string;
+  fees_cad: number | null;
+  fees_sats: number | null;
+  notes: string | null;
+  // Calculated
+  sats?: number;
+  buy_price?: number;
+}
+
+export interface BitcoinSummary {
+  name: string;
+  buys: number;
+  quantity: number;
+  cost: number;
+  avgCost: number;
+}
+
 // Auth Types
 export interface User {
   id: string;
@@ -243,3 +268,13 @@ export const EQUITY_CATEGORIES = [
 export const EQUITY_ACCOUNTS = ["Personnel", "Gestion FZ"] as const;
 
 export const CURRENCIES = ["CAD", "USD", "SAT"] as const;
+
+// Bitcoin
+export const BITCOIN_ACCOUNTS = ["FZ", "MPM", "GFZ"] as const;
+
+export const BITCOIN_EXCHANGES = [
+  "Coinbase",
+  "Bitcoin Well",
+  "Bull Bitcoin",
+  "Crypto.com",
+] as const;

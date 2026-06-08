@@ -135,6 +135,9 @@ class TradeToolsApp:
         elif module_name == 'equity':
             from equity_module import EquityModule
             self.switch_module(EquityModule(self))
+        elif module_name == 'bitcoin':
+            from bitcoin_module import BitcoinModule
+            self.switch_module(BitcoinModule(self))
 
     def _render_prompt_block(self):
         """Render status bar, top line, bottom line, then put cursor on prompt row."""
@@ -223,8 +226,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description='TradeTools v3 - CLI Trading Application')
     parser.add_argument('-l', '--login', type=str, help='Email for auto-login')
     parser.add_argument('-p', '--password', type=str, help='Password for auto-login')
-    parser.add_argument('-m', '--module', type=str, choices=['ibkr', 'fbn', 'equity'],
-                        help='Module to open directly (ibkr, fbn, or equity)')
+    parser.add_argument('-m', '--module', type=str, choices=['ibkr', 'fbn', 'equity', 'bitcoin'],
+                        help='Module to open directly (ibkr, fbn, equity, or bitcoin)')
     return parser.parse_args()
 
 

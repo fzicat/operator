@@ -9,3 +9,5 @@ t.bat
 t.sh
 o.bat
 o.sh
+
+.claude/settings.local.json

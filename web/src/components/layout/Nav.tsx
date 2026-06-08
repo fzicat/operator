@@ -7,6 +7,7 @@ const navItems = [
   { href: "/ibkr", label: "IBKR" },
   { href: "/fbn", label: "FBN" },
   { href: "/equity", label: "Equity" },
+  { href: "/bitcoin", label: "Bitcoin" },
 ];
 
 export function Nav() {

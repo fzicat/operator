@@ -98,6 +98,23 @@ CREATE TABLE IF NOT EXISTS equity (
 );
 
 -- ==============================================
+-- BITCOIN TABLE (Bitcoin buys tracking)
+-- ==============================================
+CREATE TABLE IF NOT EXISTS bitcoin (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    exchange TEXT NOT NULL,
+    date DATE NOT NULL,
+    date_on_chain DATE,
+    quantity NUMERIC(16, 8) NOT NULL,
+    cost_cad NUMERIC(14, 2) NOT NULL,
+    account TEXT NOT NULL,
+    fees_cad NUMERIC(12, 2),
+    fees_sats BIGINT,
+    notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ==============================================
 -- ROW LEVEL SECURITY (RLS)
 -- ==============================================
 
@@ -107,6 +124,7 @@ ALTER TABLE market_price ENABLE ROW LEVEL SECURITY;
 ALTER TABLE market_quotes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE fbn ENABLE ROW LEVEL SECURITY;
 ALTER TABLE equity ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bitcoin ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for authenticated users
 -- These allow full access for any authenticated user (single-user app)
@@ -125,6 +143,9 @@ CREATE POLICY "auth_all_fbn" ON fbn
 CREATE POLICY "auth_all_equity" ON equity
     FOR ALL USING (auth.role() = 'authenticated');
 
+CREATE POLICY "auth_all_bitcoin" ON bitcoin
+    FOR ALL USING (auth.role() = 'authenticated');
+
 -- ==============================================
 -- INDEXES (optional, for performance)
 -- ==============================================
@@ -136,3 +157,6 @@ CREATE INDEX IF NOT EXISTS idx_market_quotes_quote_time ON market_quotes(quote_t
 CREATE INDEX IF NOT EXISTS idx_market_quotes_instrument_type ON market_quotes(instrument_type);
 CREATE INDEX IF NOT EXISTS idx_fbn_date ON fbn(date);
 CREATE INDEX IF NOT EXISTS idx_equity_date ON equity(date);
+CREATE INDEX IF NOT EXISTS idx_bitcoin_date ON bitcoin(date);
+CREATE INDEX IF NOT EXISTS idx_bitcoin_account ON bitcoin(account);
+CREATE INDEX IF NOT EXISTS idx_bitcoin_exchange ON bitcoin(exchange);

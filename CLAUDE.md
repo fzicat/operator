@@ -70,10 +70,11 @@ Both share the same Supabase database.
 - Circular imports avoided by local imports in command handlers
 
 **Available Modules**
-- `HomeModule`: Main menu, routes to other modules (i, f, e commands)
+- `HomeModule`: Main menu, routes to other modules (i, f, e, b commands)
 - `IBKRModule`: Interactive Brokers trade management
 - `FBNModule`: FBN account tracking (monthly/yearly stats)
 - `EquityModule`: Personal equity/asset tracking
+- `BitcoinModule`: Bitcoin buys tracking (add/edit/delete, list, stats report)
 
 ### Database Layer
 
@@ -172,6 +173,8 @@ web/
 | `/equity` | Equity entries list |
 | `/equity/entry` | Add/edit equity entry |
 | `/equity/pivot` | Pivot tables view |
+| `/bitcoin` | Bitcoin buys list (read-only) with summary |
+| `/bitcoin/stats` | Bitcoin stats (totals, average cost, by account/exchange/year) |
 
 ### API Routes
 
