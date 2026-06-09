@@ -136,11 +136,13 @@ export function NumericCell({
   format = "number",
   colorCode = false,
   className = "",
+  decimals,
 }: {
   value: number | null | undefined;
   format?: "number" | "currency" | "percent";
   colorCode?: boolean;
   className?: string;
+  decimals?: number;
 }) {
   if (value === null || value === undefined || value === 0) {
     return <span className="text-[var(--gruvbox-fg4)]">-</span>;
@@ -150,15 +152,15 @@ export function NumericCell({
     switch (format) {
       case "currency":
         return value.toLocaleString("en-US", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
+          minimumFractionDigits: decimals ?? 2,
+          maximumFractionDigits: decimals ?? 2,
         });
       case "percent":
-        return `${value.toFixed(2)}%`;
+        return `${value.toFixed(decimals ?? 2)}%`;
       default:
         return value.toLocaleString("en-US", {
-          minimumFractionDigits: 0,
-          maximumFractionDigits: 2,
+          minimumFractionDigits: decimals ?? 0,
+          maximumFractionDigits: decimals ?? 2,
         });
     }
   })();

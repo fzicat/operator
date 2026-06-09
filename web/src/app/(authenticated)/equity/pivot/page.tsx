@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useError } from "@/lib/error-context";
 import { EquityEntry } from "@/types";
 import { Spinner } from "@/components/ui/Spinner";
-import { formatDate, formatCurrency } from "@/lib/utils/format";
+import { formatDate, formatInteger } from "@/lib/utils/format";
 import { EquityMenu } from "@/components/layout/EquityMenu";
 
 interface PivotRow {
@@ -191,11 +191,11 @@ export default function EquityPivotPage() {
                     </td>
                     {columnNames.map((name) => (
                       <td key={name} className="text-right">
-                        {formatCurrency(row.columns[name] || 0)}
+                        {formatInteger(row.columns[name] || 0)}
                       </td>
                     ))}
                     <td className="text-right text-[var(--gruvbox-aqua)] font-bold">
-                      {formatCurrency(row.total)}
+                      {formatInteger(row.total)}
                     </td>
                   </tr>
                 ))}

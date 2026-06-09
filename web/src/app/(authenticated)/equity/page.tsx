@@ -7,7 +7,7 @@ import { EquityEntry, EquitySummary } from "@/types";
 import { Table, NumericCell } from "@/components/ui/Table";
 import { Spinner } from "@/components/ui/Spinner";
 import { Select } from "@/components/ui/Select";
-import { formatDate } from "@/lib/utils/format";
+import { formatDate, formatInteger } from "@/lib/utils/format";
 import { EquityMenu } from "@/components/layout/EquityMenu";
 
 type SortDirection = "asc" | "desc";
@@ -189,7 +189,7 @@ export default function EquityPage() {
       header: "Balance",
       sortable: true,
       align: "right" as const,
-      render: (e: EquityEntry) => <NumericCell value={e.balance} format="currency" />,
+      render: (e: EquityEntry) => <NumericCell value={e.balance} format="currency" decimals={0} />,
     },
     {
       key: "rate",
@@ -204,7 +204,7 @@ export default function EquityPage() {
       sortable: true,
       align: "right" as const,
       className: "text-[var(--gruvbox-green)]",
-      render: (e: EquityEntry) => <NumericCell value={e.balance_cad} format="currency" />,
+      render: (e: EquityEntry) => <NumericCell value={e.balance_cad} format="currency" decimals={0} />,
     },
     {
       key: "tax",
@@ -219,7 +219,7 @@ export default function EquityPage() {
       sortable: true,
       align: "right" as const,
       className: "text-[var(--gruvbox-green)] font-bold",
-      render: (e: EquityEntry) => <NumericCell value={e.balance_net} format="currency" />,
+      render: (e: EquityEntry) => <NumericCell value={e.balance_net} format="currency" decimals={0} />,
     },
   ];
 
@@ -230,14 +230,14 @@ export default function EquityPage() {
       header: "Balance Gross",
       align: "right" as const,
       className: "text-[var(--gruvbox-green)]",
-      render: (s: EquitySummary) => <NumericCell value={s.balanceCad} format="currency" />,
+      render: (s: EquitySummary) => <NumericCell value={s.balanceCad} format="currency" decimals={0} />,
     },
     {
       key: "balanceNet",
       header: "Balance Net",
       align: "right" as const,
       className: "text-[var(--gruvbox-green)] font-bold",
-      render: (s: EquitySummary) => <NumericCell value={s.balanceNet} format="currency" />,
+      render: (s: EquitySummary) => <NumericCell value={s.balanceNet} format="currency" decimals={0} />,
     },
   ];
 
@@ -317,13 +317,13 @@ export default function EquityPage() {
           <div>
             <span className="text-[var(--gruvbox-fg4)]">Total CAD:</span>{" "}
             <span className="text-[var(--gruvbox-green)]">
-              {totalCad.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+              {formatInteger(totalCad)}
             </span>
           </div>
           <div>
             <span className="text-[var(--gruvbox-fg4)]">Total Net:</span>{" "}
             <span className="text-[var(--gruvbox-green)] font-bold">
-              {totalNet.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+              {formatInteger(totalNet)}
             </span>
           </div>
         </div>
