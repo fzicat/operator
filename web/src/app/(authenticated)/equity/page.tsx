@@ -227,17 +227,33 @@ export default function EquityPage() {
     { key: "name", header: "Name" },
     {
       key: "balanceCad",
-      header: "Balance Gross",
+      header: "Gross",
       align: "right" as const,
       className: "text-[var(--gruvbox-green)]",
       render: (s: EquitySummary) => <NumericCell value={s.balanceCad} format="currency" decimals={0} />,
     },
     {
+      key: "balanceCadPct",
+      header: "%",
+      align: "right" as const,
+      className: "text-[var(--gruvbox-fg4)]",
+      render: (s: EquitySummary) =>
+        totalCad ? ((s.balanceCad / totalCad) * 100).toFixed(1) : "-",
+    },
+    {
       key: "balanceNet",
-      header: "Balance Net",
+      header: "Net",
       align: "right" as const,
       className: "text-[var(--gruvbox-green)] font-bold",
       render: (s: EquitySummary) => <NumericCell value={s.balanceNet} format="currency" decimals={0} />,
+    },
+    {
+      key: "balanceNetPct",
+      header: "%",
+      align: "right" as const,
+      className: "text-[var(--gruvbox-fg4)]",
+      render: (s: EquitySummary) =>
+        totalNet ? ((s.balanceNet / totalNet) * 100).toFixed(1) : "-",
     },
   ];
 
