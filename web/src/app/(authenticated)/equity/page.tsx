@@ -233,14 +233,6 @@ export default function EquityPage() {
       render: (s: EquitySummary) => <NumericCell value={s.balanceCad} format="currency" decimals={0} />,
     },
     {
-      key: "balanceCadPct",
-      header: "%",
-      align: "right" as const,
-      className: "text-[var(--gruvbox-fg4)]",
-      render: (s: EquitySummary) =>
-        totalCad ? ((s.balanceCad / totalCad) * 100).toFixed(1) : "-",
-    },
-    {
       key: "balanceNet",
       header: "Net",
       align: "right" as const,
