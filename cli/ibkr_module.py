@@ -1410,10 +1410,8 @@ class IBKRModule(Module):
                  stock_rem_qty_sum = stock_df['remaining_qty'].sum() if not stock_df.empty else 0.0
                  book_price = (stock_credit_sum / stock_rem_qty_sum) if stock_rem_qty_sum else 0.0
                  value = stock_credit_sum * -1
-                 stock_mtm = stock_df['mtm_value'].sum()
-                 call_mtm = call_df['mtm_value'].sum()
-                 put_mtm = put_df['mtm_value'].sum()
-                 mtm = stock_mtm + call_mtm + put_mtm
+                 # MTM Value / MTM % consider shares only (ignore calls and puts)
+                 mtm = stock_df['mtm_value'].sum()
                  
                  # Get share price for target shares calculation
                  share_price = stock_df['mtm_price'].max() if not stock_df.empty else 0.0
@@ -1651,7 +1649,8 @@ class IBKRModule(Module):
 
                 stock_credit_sum = stock_df['credit'].sum() if not stock_df.empty else 0.0
                 value = stock_credit_sum * -1
-                mtm = stock_df['mtm_value'].sum() + call_df['mtm_value'].sum() + put_df['mtm_value'].sum()
+                # MTM Value / MTM % consider shares only (ignore calls and puts)
+                mtm = stock_df['mtm_value'].sum()
                 s_unrlzd = stock_df['unrealized_pnl'].sum()
                 c_unrlzd = call_df['unrealized_pnl'].sum()
                 p_unrlzd = put_df['unrealized_pnl'].sum()
@@ -1826,7 +1825,8 @@ class IBKRModule(Module):
                 stock_rem_qty_sum = stock_df['remaining_qty'].sum() if not stock_df.empty else 0.0
                 book_price = (stock_credit_sum / stock_rem_qty_sum) if stock_rem_qty_sum else 0.0
                 value = stock_credit_sum * -1
-                mtm = stock_df['mtm_value'].sum() + call_df['mtm_value'].sum() + put_df['mtm_value'].sum()
+                # MTM Value / MTM % consider shares only (ignore calls and puts)
+                mtm = stock_df['mtm_value'].sum()
                 share_price = stock_df['mtm_price'].max() if not stock_df.empty else 0.0
 
                 s_qty = stock_df['remaining_qty'].sum()
@@ -1938,7 +1938,8 @@ class IBKRModule(Module):
                 stock_rem_qty_sum = stock_df['remaining_qty'].sum() if not stock_df.empty else 0.0
                 book_price = (stock_credit_sum / stock_rem_qty_sum) if stock_rem_qty_sum else 0.0
                 value = stock_credit_sum * -1
-                mtm = stock_df['mtm_value'].sum() + call_df['mtm_value'].sum() + put_df['mtm_value'].sum()
+                # MTM Value / MTM % consider shares only (ignore calls and puts)
+                mtm = stock_df['mtm_value'].sum()
                 share_price = stock_df['mtm_price'].max() if not stock_df.empty else 0.0
                 unrlzd_pnl = group['unrealized_pnl'].sum()
                 s_qty = stock_df['remaining_qty'].sum()
