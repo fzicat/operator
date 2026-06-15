@@ -298,6 +298,94 @@ export function outstandingPremiumAsOf(
   return result;
 }
 
+export interface DateValuePoint {
+  date: string; // YYYY-MM-DD — end-of-day value
+  value: number;
+}
+
+/**
+ * For each day with put activity, the total cash needed to cover assignment of
+ * every short put open at end of day: sum of strike * multiplier * quantity over
+ * the open short-put lots. Mirrors `calculateOutstandingPremiumByDay`'s FIFO
+ * bookkeeping but tracks puts only and values each lot at its strike rather than
+ * its premium. Short opens (sell-to-open: O + qty<0) add lots; buy-to-close
+ * (C + qty>0) consume them FIFO. Returns one snapshot per active day in ascending
+ * date order; use `valueAsOf` to read the carried-forward balance for any date.
+ * Trades must be passed in chronological order.
+ */
+export function calculateCashSecuredPutByDay(trades: Trade[]): DateValuePoint[] {
+  // Per-symbol inventory of open short-put lots: qty + cash required per contract.
+  const inventory: Record<string, { qty: number; cashPerContract: number }[]> = {};
+
+  const currentTotal = () => {
+    let total = 0;
+    for (const lots of Object.values(inventory)) {
+      for (const lot of lots) total += lot.qty * lot.cashPerContract;
+    }
+    return total;
+  };
+
+  const snapshots: DateValuePoint[] = [];
+  let lastDate: string | null = null;
+
+  for (const trade of trades) {
+    const putCall: "C" | "P" = (trade.putCall || "").toUpperCase().startsWith("C") ? "C" : "P";
+    if (putCall !== "P") continue;
+
+    const dateStr = localDateStr(trade.dateTime);
+
+    // Date advanced — finalize the previous day's end-of-day snapshot
+    if (lastDate !== null && dateStr !== lastDate) {
+      snapshots.push({ date: lastDate, value: currentTotal() });
+    }
+
+    const symbol = trade.symbol;
+    const qty = trade.quantity ?? 0;
+    const strike = trade.strike ?? 0;
+    const multiplier = trade.multiplier ?? 100;
+    const oc = trade.openCloseIndicator;
+
+    if (oc === "O" && qty < 0) {
+      if (!inventory[symbol]) inventory[symbol] = [];
+      inventory[symbol].push({ qty: Math.abs(qty), cashPerContract: strike * multiplier });
+    } else if (oc === "C" && qty > 0 && inventory[symbol]) {
+      let remaining = qty;
+      const lots = inventory[symbol];
+      while (remaining > 0 && lots.length > 0) {
+        const lot = lots[0];
+        if (lot.qty <= remaining + 1e-9) {
+          remaining -= lot.qty;
+          lots.shift();
+        } else {
+          lot.qty -= remaining;
+          remaining = 0;
+        }
+      }
+    }
+
+    lastDate = dateStr;
+  }
+
+  if (lastDate !== null) {
+    snapshots.push({ date: lastDate, value: currentTotal() });
+  }
+
+  return snapshots;
+}
+
+/**
+ * Carried-forward value as of a given date: the latest snapshot on or before
+ * `dateStr`. Assumes `points` is sorted ascending by date.
+ */
+export function valueAsOf(points: DateValuePoint[], dateStr: string): number {
+  let result = 0;
+  for (const p of points) {
+    if (p.date <= dateStr) result = p.value;
+    else break;
+  }
+  return result;
+}
+
 export function calculateCredit(trades: Trade[]): Trade[] {
   return trades.map((trade) => {
     const multiplier = trade.multiplier ?? 1;
