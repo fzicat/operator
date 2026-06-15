@@ -5,6 +5,8 @@ import { useRef, useState } from "react";
 export interface OPChartPoint {
   date: string; // YYYY-MM-DD
   total: number;
+  call: number;
+  put: number;
 }
 
 interface Props {
@@ -42,12 +44,19 @@ export function OutstandingPremiumChart({ data, smaWindow = 7 }: Props) {
   if (data.length === 0) return null;
 
   const totals = data.map((d) => d.total);
+  const calls = data.map((d) => d.call);
+  const puts = data.map((d) => d.put);
   const sma = simpleMovingAverage(totals, smaWindow);
 
   const plotW = VIEW_W - M.left - M.right;
   const plotH = VIEW_H - M.top - M.bottom;
 
-  const seriesValues = [...totals, ...sma.filter((v): v is number => v !== null)];
+  const seriesValues = [
+    ...totals,
+    ...calls,
+    ...puts,
+    ...sma.filter((v): v is number => v !== null),
+  ];
   let yMin = Math.min(0, ...seriesValues);
   let yMax = Math.max(0, ...seriesValues);
   if (yMin === yMax) {
@@ -64,6 +73,8 @@ export function OutstandingPremiumChart({ data, smaWindow = 7 }: Props) {
   const yFor = (v: number) => M.top + plotH * (1 - (v - yMin) / (yMax - yMin));
 
   const totalLine = totals.map((v, i) => `${xFor(i)},${yFor(v)}`).join(" ");
+  const callLine = calls.map((v, i) => `${xFor(i)},${yFor(v)}`).join(" ");
+  const putLine = puts.map((v, i) => `${xFor(i)},${yFor(v)}`).join(" ");
   const smaLine = sma
     .map((v, i) => (v === null ? null : `${xFor(i)},${yFor(v)}`))
     .filter((p): p is string => p !== null)
@@ -137,6 +148,22 @@ export function OutstandingPremiumChart({ data, smaWindow = 7 }: Props) {
         </text>
       ))}
 
+      {/* Calls line */}
+      <polyline
+        points={callLine}
+        fill="none"
+        style={{ stroke: "var(--gruvbox-red)" }}
+        strokeWidth={2}
+      />
+
+      {/* Puts line */}
+      <polyline
+        points={putLine}
+        fill="none"
+        style={{ stroke: "var(--gruvbox-green)" }}
+        strokeWidth={2}
+      />
+
       {/* SMA line */}
       {smaLine && (
         <polyline
@@ -168,13 +195,15 @@ export function OutstandingPremiumChart({ data, smaWindow = 7 }: Props) {
             strokeWidth={1}
             strokeDasharray="3 3"
           />
+          <circle cx={xFor(hover)} cy={yFor(calls[hover])} r={3.5} style={{ fill: "var(--gruvbox-red)" }} />
+          <circle cx={xFor(hover)} cy={yFor(puts[hover])} r={3.5} style={{ fill: "var(--gruvbox-green)" }} />
           <circle cx={xFor(hover)} cy={yFor(totals[hover])} r={3.5} style={{ fill: "var(--gruvbox-yellow)" }} />
           {sma[hover] !== null && (
             <circle cx={xFor(hover)} cy={yFor(sma[hover] as number)} r={3.5} style={{ fill: "var(--gruvbox-blue)" }} />
           )}
           {(() => {
             const boxW = 150;
-            const boxH = 58;
+            const boxH = 90;
             const cx = xFor(hover);
             const bx = Math.min(Math.max(cx + 10, M.left), VIEW_W - M.right - boxW);
             const by = M.top + 4;
@@ -195,7 +224,13 @@ export function OutstandingPremiumChart({ data, smaWindow = 7 }: Props) {
                 <text x={bx + 8} y={by + 34} fontSize={12} style={{ fill: "var(--gruvbox-yellow)" }}>
                   Total OP: {formatAxis(totals[hover])}
                 </text>
-                <text x={bx + 8} y={by + 50} fontSize={12} style={{ fill: "var(--gruvbox-blue)" }}>
+                <text x={bx + 8} y={by + 50} fontSize={12} style={{ fill: "var(--gruvbox-red)" }}>
+                  Calls: {formatAxis(calls[hover])}
+                </text>
+                <text x={bx + 8} y={by + 66} fontSize={12} style={{ fill: "var(--gruvbox-green)" }}>
+                  Puts: {formatAxis(puts[hover])}
+                </text>
+                <text x={bx + 8} y={by + 82} fontSize={12} style={{ fill: "var(--gruvbox-blue)" }}>
                   {smaWindow} SMA: {smaVal === null ? "-" : formatAxis(smaVal)}
                 </text>
               </g>
@@ -210,8 +245,16 @@ export function OutstandingPremiumChart({ data, smaWindow = 7 }: Props) {
         <text x={M.left + 26} y={M.top + 8} fontSize={12} style={{ fill: "var(--gruvbox-fg4)" }}>
           Total OP
         </text>
-        <line x1={M.left + 100} x2={M.left + 120} y1={M.top + 4} y2={M.top + 4} style={{ stroke: "var(--gruvbox-blue)" }} strokeWidth={2} strokeDasharray="5 4" />
+        <line x1={M.left + 100} x2={M.left + 120} y1={M.top + 4} y2={M.top + 4} style={{ stroke: "var(--gruvbox-red)" }} strokeWidth={2} />
         <text x={M.left + 126} y={M.top + 8} fontSize={12} style={{ fill: "var(--gruvbox-fg4)" }}>
+          Calls
+        </text>
+        <line x1={M.left + 175} x2={M.left + 195} y1={M.top + 4} y2={M.top + 4} style={{ stroke: "var(--gruvbox-green)" }} strokeWidth={2} />
+        <text x={M.left + 201} y={M.top + 8} fontSize={12} style={{ fill: "var(--gruvbox-fg4)" }}>
+          Puts
+        </text>
+        <line x1={M.left + 245} x2={M.left + 265} y1={M.top + 4} y2={M.top + 4} style={{ stroke: "var(--gruvbox-blue)" }} strokeWidth={2} strokeDasharray="5 4" />
+        <text x={M.left + 271} y={M.top + 8} fontSize={12} style={{ fill: "var(--gruvbox-fg4)" }}>
           {smaWindow} SMA
         </text>
       </g>

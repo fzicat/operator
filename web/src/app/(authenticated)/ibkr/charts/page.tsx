@@ -22,6 +22,8 @@ interface DailyPoint {
   date: string;
   pnl: number;
   csp: number;
+  opCall: number;
+  opPut: number;
   opTotal: number;
 }
 
@@ -95,6 +97,8 @@ export default function IBKRChartsPage() {
             date: currentDateStr,
             pnl: pnlByDay[currentDateStr] ?? 0,
             csp: valueAsOf(cspPoints, currentDateStr),
+            opCall: op.call,
+            opPut: op.put,
             opTotal: op.call + op.put,
           });
         }
@@ -138,7 +142,12 @@ export default function IBKRChartsPage() {
               Outstanding Premium
             </h2>
             <OutstandingPremiumChart
-              data={series.map((s) => ({ date: s.date, total: s.opTotal }))}
+              data={series.map((s) => ({
+                date: s.date,
+                total: s.opTotal,
+                call: s.opCall,
+                put: s.opPut,
+              }))}
               smaWindow={7}
             />
           </div>
