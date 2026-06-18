@@ -14,6 +14,7 @@ SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")  # Anon key for frontend
 IBKR_TOKEN = os.getenv("IBKR_TOKEN", "")
 QUERY_ID_DAILY = os.getenv("QUERY_ID_DAILY", "")
 QUERY_ID_WEEKLY = os.getenv("QUERY_ID_WEEKLY", "")
+QUERY_ID_NAV = os.getenv("QUERY_ID_NAV", "")
 
 # IB Gateway API Configuration
 IB_GATEWAY_HOST = os.getenv("IB_GATEWAY_HOST", "127.0.0.1")

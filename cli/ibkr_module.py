@@ -11,7 +11,7 @@ from rich.table import Table
 from rich.console import Group
 from rich.panel import Panel
 from shared import config
-from cli.db import ibkr_db, market_quote_db
+from cli.db import ibkr_db, market_quote_db, nav_db
 from cli.services import quote_service, valuation_service
 from base_module import Module
 
@@ -418,6 +418,7 @@ class IBKRModule(Module):
             self.output_content = '''IBKR commands:\n
         - I   | import     > Import daily trades
         - I W | import w   > Import weekly trades
+        - I N | import nav > Import Net Asset Value (NAV)
         - M   | mtm        > Get Mark-to-Market Values
         - MS  | mtm stock  > Get MTM Values (stocks only, skip options)
         - MV  | mtm verbose > Get MTM Values (verbose, print each symbol -> price)
@@ -487,6 +488,8 @@ class IBKRModule(Module):
             self.import_trades(config.QUERY_ID_DAILY, "Daily")
         elif cmd in ['i w', 'import w', 'import weekly']:
             self.import_trades(config.QUERY_ID_WEEKLY, "Weekly")
+        elif cmd in ['i n', 'import nav']:
+            self.import_nav()
         elif cmd in ['l', 'lm', 'list', 'list mtm']:
             self.list_all_positions(order_by='mtm', ascending=False)
         elif cmd in ['lv', 'list value']:
@@ -530,19 +533,28 @@ class IBKRModule(Module):
         else:
             self.output_content = f"Unknown command: {command}\nType 'help' for valid commands."
 
-    def import_trades(self, query_id, label):
-        self.app.console.print(f"[info]Requesting {label} trades report...[/]")
+    def _fetch_flex_report(self, query_id, label):
+        """Request a Flex Query report from IBKR and return its XML content (bytes).
+
+        Returns None on error and sets self.output_content with the message.
+        """
+        self.app.console.print(f"[info]Requesting {label} report...[/]")
         token = config.IBKR_TOKEN
-        
+
+        if not query_id:
+            self.output_content = f"[error]No query id configured for {label}.[/]"
+            return None
+
         # Step 1: Send Request
         url_req = f"https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest?t={token}&q={query_id}&v=3"
+        print(url_req)
         try:
             resp = requests.get(url_req)
             resp.raise_for_status()
-            
+
             # Use ElementTree.fromstring directly
             root = ET.fromstring(resp.content)
-            
+
             # Check for Status
             status = root.find('Status')
             if status is not None and status.text == 'Success':
@@ -553,31 +565,141 @@ class IBKRModule(Module):
                 err_code = root.find('ErrorCode').text if root.find('ErrorCode') is not None else "Unknown"
                 err_msg = root.find('ErrorMessage').text if root.find('ErrorMessage') is not None else "Unknown Error"
                 self.output_content = f"[error]Error requesting report: {err_code} - {err_msg}[/]"
-                return
+                return None
 
             # Step 2: Get Statement
             # Retry loop
             url_dl = f"{base_url}?q={ref_code}&t={token}&v=3"
             print(url_dl)
-            
+
             max_retries = 10
             for i in range(max_retries):
                 time.sleep(2) # Wait a bit
                 resp_dl = requests.get(url_dl)
-                if resp_dl.status_code == 200:
-                    # Check if it is actual XML content we want or still processing
-                    if b'<FlexStatement' in resp_dl.content or b'<FlexQueryResponse' in resp_dl.content:
-                        self.process_xml(resp_dl.content)
-                        return
-                    else:
-                        self.app.console.print("[info]Waiting for report...[/]")
-                else:
+                if resp_dl.status_code != 200:
                     self.app.console.print(f"[info]Waiting for report... (Status: {resp_dl.status_code})[/]")
-            
+                    continue
+
+                # The finished report is a <FlexQueryResponse>. While it is still
+                # generating, IBKR returns a <FlexStatementResponse> with a Warn
+                # status (ErrorCode 1019). Note that '<FlexStatement' is a substring
+                # of '<FlexStatementResponse', so match the report root explicitly
+                # rather than via a loose substring check.
+                try:
+                    dl_root = ET.fromstring(resp_dl.content)
+                except ET.ParseError:
+                    self.app.console.print("[info]Waiting for report...[/]")
+                    continue
+
+                if dl_root.tag.rsplit('}', 1)[-1] == 'FlexQueryResponse':
+                    return resp_dl.content
+
+                # Not the report: either "generation in progress" (keep polling)
+                # or a genuine error (surface it and stop).
+                status = dl_root.findtext('Status')
+                err_code = dl_root.findtext('ErrorCode')
+                if status == 'Warn' or err_code == '1019':
+                    self.app.console.print("[info]Waiting for report...[/]")
+                    continue
+
+                err_msg = dl_root.findtext('ErrorMessage') or "Unknown error"
+                self.output_content = f"[error]Error retrieving report: {err_code} - {err_msg}[/]"
+                return None
+
             self.output_content = "[error]Timeout waiting for report generation.[/]"
+            return None
 
         except Exception as e:
             self.output_content = f"[error]Exception during import: {e}[/]"
+            return None
+
+    def import_trades(self, query_id, label):
+        content = self._fetch_flex_report(query_id, f"{label} trades")
+        if content is not None:
+            self.process_xml(content)
+
+    def import_nav(self):
+        content = self._fetch_flex_report(config.QUERY_ID_NAV, "NAV")
+        if content is not None:
+            self.process_nav_xml(content)
+
+    def process_nav_xml(self, xml_content):
+        """Parse a NAV Flex Query report and upsert one row per day."""
+        try:
+            root = ET.fromstring(xml_content)
+
+            def safe_float(elem, key):
+                val = elem.get(key)
+                if val is None or not str(val).strip():
+                    return None
+                try:
+                    return float(val)
+                except ValueError:
+                    return None
+
+            # Namespace-agnostic tag matching (live reports may carry a namespace
+            # prefix that the sample file did not).
+            def localname(elem):
+                return elem.tag.rsplit('}', 1)[-1]
+
+            # Collect equity summary (last item per statement) keyed by date
+            rows = {}
+            for eq in root.iter():
+                if localname(eq) != 'EquitySummaryInBase':
+                    continue
+                items = [c for c in eq.iter() if localname(c) == 'EquitySummaryByReportDateInBase']
+                if not items:
+                    continue
+                last = items[-1]
+                report_date = last.get('reportDate')
+                if not report_date:
+                    continue
+                rows[report_date] = {
+                    'date': report_date,
+                    'cash': safe_float(last, 'cash'),
+                    'stock': safe_float(last, 'stock'),
+                    'options': safe_float(last, 'options'),
+                    'dividend_accruals': safe_float(last, 'dividendAccruals'),
+                    'interest_accruals': safe_float(last, 'interestAccruals'),
+                    'total': safe_float(last, 'total'),
+                    'deposits_withdrawals': None,
+                }
+
+            # Merge deposits/withdrawals from ChangeInNAV by date
+            for chg in root.iter():
+                if localname(chg) != 'ChangeInNAV':
+                    continue
+                to_date = chg.get('toDate')
+                if not to_date:
+                    continue
+                deposits = safe_float(chg, 'depositsWithdrawals')
+                if to_date in rows:
+                    rows[to_date]['deposits_withdrawals'] = deposits
+                else:
+                    rows[to_date] = {
+                        'date': to_date,
+                        'cash': None,
+                        'stock': None,
+                        'options': None,
+                        'dividend_accruals': None,
+                        'interest_accruals': None,
+                        'total': None,
+                        'deposits_withdrawals': deposits,
+                    }
+
+            if not rows:
+                self.output_content = "[info]No NAV data found in the report.[/]"
+                return
+
+            payload = [rows[d] for d in sorted(rows)]
+            count_new = nav_db.save_nav_rows(payload)
+            self.output_content = (
+                f"NAV import complete. {count_new} new day(s) imported "
+                f"({len(payload)} day(s) in report)."
+            )
+
+        except Exception as e:
+            self.output_content = f"[error]Error parsing NAV XML or saving to DB: {e}[/]"
 
     def process_xml(self, xml_content):
         try:
