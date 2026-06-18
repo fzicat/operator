@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/Button";
 import { IBKRMenu } from "@/components/layout/IBKRMenu";
 import { OutstandingPremiumChart } from "@/components/ibkr/OutstandingPremiumChart";
 import { DailyBarChart } from "@/components/ibkr/DailyBarChart";
+import { NavLineChart } from "@/components/ibkr/NavLineChart";
 import { addDaysToDateStr, getDayOfWeek, parseAsNY } from "@/lib/utils/format";
 
 interface DailyPoint {
@@ -28,6 +29,12 @@ interface DailyPoint {
   opTotal: number;
 }
 
+interface NavPoint {
+  date: string;
+  nav: number;
+  cash: number;
+}
+
 type RangeKey = "YTD" | "90D" | "30D" | "10D";
 
 /** X-axis range options. `days` is the lookback window; null means year-to-date. */
@@ -37,6 +44,19 @@ const RANGES: { key: RangeKey; days: number | null }[] = [
   { key: "30D", days: 30 },
   { key: "10D", days: 10 },
 ];
+
+/**
+ * Restrict a chronological (oldest -> newest) series to the selected range,
+ * measured back from its own latest point so charts always end on the most
+ * recent data. `YTD` cuts at January 1st of that latest point's year.
+ */
+function sliceByRange<T extends { date: string }>(rows: T[], range: RangeKey): T[] {
+  if (rows.length === 0) return rows;
+  const lastDate = rows[rows.length - 1].date;
+  const days = RANGES.find((r) => r.key === range)?.days ?? null;
+  const cutoff = days === null ? `${lastDate.slice(0, 4)}-01-01` : addDaysToDateStr(lastDate, -days);
+  return rows.filter((r) => r.date >= cutoff);
+}
 
 /** Local (NY) calendar date of a trade, as YYYY-MM-DD. */
 function localDate(dateTime: string): string {
@@ -50,29 +70,32 @@ function localDate(dateTime: string): string {
 export default function IBKRChartsPage() {
   const { setError } = useError();
   const [series, setSeries] = useState<DailyPoint[]>([]);
+  const [navSeries, setNavSeries] = useState<NavPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<RangeKey>("YTD");
 
-  // Restrict the series to the selected x-axis range, measured back from the
-  // latest data point so the charts always end on the most recent activity.
-  const visibleSeries = useMemo(() => {
-    if (series.length === 0) return series;
-    const lastDate = series[series.length - 1].date;
-    const days = RANGES.find((r) => r.key === range)?.days ?? null;
-    const cutoff = days === null ? `${lastDate.slice(0, 4)}-01-01` : addDaysToDateStr(lastDate, -days);
-    return series.filter((s) => s.date >= cutoff);
-  }, [series, range]);
+  // Restrict each series to the selected x-axis range.
+  const visibleSeries = useMemo(() => sliceByRange(series, range), [series, range]);
+  const visibleNav = useMemo(() => sliceByRange(navSeries, range), [navSeries, range]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
 
-      const { data: tradesData, error: tradesError } = await supabase
-        .from("trades")
-        .select("*")
-        .order("date_time");
+      const [{ data: tradesData, error: tradesError }, { data: navData, error: navError }] =
+        await Promise.all([
+          supabase.from("trades").select("*").order("date_time"),
+          supabase.from("nav").select("date, total, cash").order("date"),
+        ]);
 
       if (tradesError) throw tradesError;
+      if (navError) throw navError;
+
+      // NAV series: total (NAV) and cash, one point per reported day.
+      const navPoints: NavPoint[] = (navData || [])
+        .filter((r) => r.total != null && r.cash != null)
+        .map((r) => ({ date: r.date as string, nav: Number(r.total), cash: Number(r.cash) }));
+      setNavSeries(navPoints);
 
       const allTrades = toCamelCaseArray<Trade>(tradesData || []);
 
@@ -167,44 +190,71 @@ export default function IBKRChartsPage() {
         </div>
       </div>
 
-      {series.length === 0 ? (
+      {series.length === 0 && navSeries.length === 0 ? (
         <div className="p-6 text-center text-[var(--gruvbox-fg4)]">No chart data available</div>
       ) : (
         <div className="space-y-4">
-          <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
-            <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">
-              Outstanding Premium
-            </h2>
-            <OutstandingPremiumChart
-              data={visibleSeries.map((s) => ({
-                date: s.date,
-                total: s.opTotal,
-                call: s.opCall,
-                put: s.opPut,
-              }))}
-              smaWindow={7}
-            />
-          </div>
+          {visibleNav.length > 0 && (
+            <>
+              <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
+                <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">NAV</h2>
+                <NavLineChart
+                  data={visibleNav.map((s) => ({ date: s.date, value: s.nav }))}
+                  color="var(--gruvbox-yellow)"
+                  valueLabel="NAV"
+                />
+              </div>
 
-          <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
-            <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">Daily PnL</h2>
-            <DailyBarChart
-              data={visibleSeries.map((s) => ({ date: s.date, value: s.pnl }))}
-              color="sign"
-              valueLabel="PnL"
-            />
-          </div>
+              <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
+                <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">Cash</h2>
+                <NavLineChart
+                  data={visibleNav.map((s) => ({ date: s.date, value: s.cash }))}
+                  color="var(--gruvbox-aqua)"
+                  valueLabel="Cash"
+                  zeroLine
+                />
+              </div>
+            </>
+          )}
 
-          <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
-            <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">
-              Daily Cash Secured Put
-            </h2>
-            <DailyBarChart
-              data={visibleSeries.map((s) => ({ date: s.date, value: s.csp }))}
-              color="var(--gruvbox-purple)"
-              valueLabel="Cash Secured"
-            />
-          </div>
+          {visibleSeries.length > 0 && (
+            <>
+              <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
+                <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">
+                  Outstanding Premium
+                </h2>
+                <OutstandingPremiumChart
+                  data={visibleSeries.map((s) => ({
+                    date: s.date,
+                    total: s.opTotal,
+                    call: s.opCall,
+                    put: s.opPut,
+                  }))}
+                  smaWindow={7}
+                />
+              </div>
+
+              <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
+                <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">Daily PnL</h2>
+                <DailyBarChart
+                  data={visibleSeries.map((s) => ({ date: s.date, value: s.pnl }))}
+                  color="sign"
+                  valueLabel="PnL"
+                />
+              </div>
+
+              <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
+                <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">
+                  Daily Cash Secured Put
+                </h2>
+                <DailyBarChart
+                  data={visibleSeries.map((s) => ({ date: s.date, value: s.csp }))}
+                  color="var(--gruvbox-purple)"
+                  valueLabel="Cash Secured"
+                />
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
