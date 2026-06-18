@@ -16,29 +16,55 @@ interface Props {
   valueLabel: string;
   /** Always include y=0 in the domain and draw a baseline there. */
   zeroLine?: boolean;
+  /** If set, draw an N-point simple moving average (dashed) line. */
+  smaWindow?: number;
+  /** Formatter for axis labels and tooltip values. Defaults to rounded integer. */
+  format?: (value: number) => string;
 }
 
 const VIEW_W = 900;
 const VIEW_H = 300;
 const M = { top: 16, right: 16, bottom: 28, left: 64 };
 
-function formatAxis(value: number): string {
+function defaultFormat(value: number): string {
   return Math.round(value).toLocaleString("en-US");
 }
 
-export function NavLineChart({ data, color, valueLabel, zeroLine = false }: Props) {
+/**
+ * Simple moving average. Entries before a full window are null so the line
+ * only starts once `window` points are available.
+ */
+function simpleMovingAverage(values: number[], window: number): (number | null)[] {
+  return values.map((_, i) => {
+    if (i < window - 1) return null;
+    let sum = 0;
+    for (let j = i - window + 1; j <= i; j++) sum += values[j];
+    return sum / window;
+  });
+}
+
+export function NavLineChart({
+  data,
+  color,
+  valueLabel,
+  zeroLine = false,
+  smaWindow,
+  format = defaultFormat,
+}: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
 
   if (data.length === 0) return null;
 
   const values = data.map((d) => d.value);
+  const sma = smaWindow ? simpleMovingAverage(values, smaWindow) : null;
 
   const plotW = VIEW_W - M.left - M.right;
   const plotH = VIEW_H - M.top - M.bottom;
 
-  let yMin = Math.min(...values, ...(zeroLine ? [0] : []));
-  let yMax = Math.max(...values, ...(zeroLine ? [0] : []));
+  const smaValues = sma ? sma.filter((v): v is number => v !== null) : [];
+  let yMin = Math.min(...values, ...smaValues, ...(zeroLine ? [0] : []));
+  let yMax = Math.max(...values, ...smaValues, ...(zeroLine ? [0] : []));
   if (yMin === yMax) {
     yMin -= 1;
     yMax += 1;
@@ -53,6 +79,12 @@ export function NavLineChart({ data, color, valueLabel, zeroLine = false }: Prop
   const yFor = (v: number) => M.top + plotH * (1 - (v - yMin) / (yMax - yMin));
 
   const line = values.map((v, i) => `${xFor(i)},${yFor(v)}`).join(" ");
+  const smaLine = sma
+    ? sma
+        .map((v, i) => (v === null ? null : `${xFor(i)},${yFor(v)}`))
+        .filter((p): p is string => p !== null)
+        .join(" ")
+    : "";
 
   // y-axis ticks
   const tickCount = 4;
@@ -102,7 +134,7 @@ export function NavLineChart({ data, color, valueLabel, zeroLine = false }: Prop
               fontSize={12}
               style={{ fill: "var(--gruvbox-fg4)" }}
             >
-              {formatAxis(t)}
+              {format(t)}
             </text>
           </g>
         );
@@ -134,8 +166,41 @@ export function NavLineChart({ data, color, valueLabel, zeroLine = false }: Prop
         />
       )}
 
+      {/* SMA line */}
+      {smaLine && (
+        <polyline
+          points={smaLine}
+          fill="none"
+          style={{ stroke: "var(--gruvbox-blue)" }}
+          strokeWidth={2}
+          strokeDasharray="5 4"
+        />
+      )}
+
       {/* value line */}
       <polyline points={line} fill="none" style={{ stroke: color }} strokeWidth={2} />
+
+      {/* legend (only when an SMA is shown) */}
+      {sma && (
+        <g>
+          <line x1={M.left} x2={M.left + 20} y1={M.top + 4} y2={M.top + 4} style={{ stroke: color }} strokeWidth={2} />
+          <text x={M.left + 26} y={M.top + 8} fontSize={12} style={{ fill: "var(--gruvbox-fg4)" }}>
+            {valueLabel}
+          </text>
+          <line
+            x1={M.left + 110}
+            x2={M.left + 130}
+            y1={M.top + 4}
+            y2={M.top + 4}
+            style={{ stroke: "var(--gruvbox-blue)" }}
+            strokeWidth={2}
+            strokeDasharray="5 4"
+          />
+          <text x={M.left + 136} y={M.top + 8} fontSize={12} style={{ fill: "var(--gruvbox-fg4)" }}>
+            {smaWindow}d SMA
+          </text>
+        </g>
+      )}
 
       {/* hover */}
       {hover !== null && (
@@ -150,12 +215,16 @@ export function NavLineChart({ data, color, valueLabel, zeroLine = false }: Prop
             strokeDasharray="3 3"
           />
           <circle cx={xFor(hover)} cy={yFor(values[hover])} r={3.5} style={{ fill: color }} />
+          {sma && sma[hover] !== null && (
+            <circle cx={xFor(hover)} cy={yFor(sma[hover] as number)} r={3.5} style={{ fill: "var(--gruvbox-blue)" }} />
+          )}
           {(() => {
             const boxW = 150;
-            const boxH = 42;
+            const boxH = sma ? 58 : 42;
             const cx = xFor(hover);
             const bx = Math.min(Math.max(cx + 10, M.left), VIEW_W - M.right - boxW);
             const by = M.top + 4;
+            const smaVal = sma ? sma[hover] : null;
             return (
               <g>
                 <rect
@@ -170,8 +239,13 @@ export function NavLineChart({ data, color, valueLabel, zeroLine = false }: Prop
                   {data[hover].date}
                 </text>
                 <text x={bx + 8} y={by + 34} fontSize={12} style={{ fill: color }}>
-                  {valueLabel}: {formatAxis(values[hover])}
+                  {valueLabel}: {format(values[hover])}
                 </text>
+                {sma && (
+                  <text x={bx + 8} y={by + 50} fontSize={12} style={{ fill: "var(--gruvbox-blue)" }}>
+                    {smaWindow}d SMA: {smaVal === null ? "-" : format(smaVal)}
+                  </text>
+                )}
               </g>
             );
           })()}

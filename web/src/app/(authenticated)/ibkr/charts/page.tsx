@@ -58,6 +58,22 @@ function sliceByRange<T extends { date: string }>(rows: T[], range: RangeKey): T
   return rows.filter((r) => r.date >= cutoff);
 }
 
+/** NAV (total) as of `date`: the latest nav row on or before it, or null. */
+function navAsOf(rows: NavPoint[], date: string): number | null {
+  let result: number | null = null;
+  for (const r of rows) {
+    if (r.date <= date) result = r.nav;
+    else break;
+  }
+  return result;
+}
+
+interface PctPoint {
+  date: string;
+  opPct: number | null;
+  cspPct: number | null;
+}
+
 /** Local (NY) calendar date of a trade, as YYYY-MM-DD. */
 function localDate(dateTime: string): string {
   const d = parseAsNY(dateTime);
@@ -77,6 +93,21 @@ export default function IBKRChartsPage() {
   // Restrict each series to the selected x-axis range.
   const visibleSeries = useMemo(() => sliceByRange(series, range), [series, range]);
   const visibleNav = useMemo(() => sliceByRange(navSeries, range), [navSeries, range]);
+
+  // Outstanding premium and cash-secured put as a percentage of NAV, using the
+  // NAV reported on (or most recently before) each trade day.
+  const pctSeries = useMemo<PctPoint[]>(() => {
+    if (series.length === 0 || navSeries.length === 0) return [];
+    return series.map((s) => {
+      const nav = navAsOf(navSeries, s.date);
+      return {
+        date: s.date,
+        opPct: nav ? (s.opTotal / nav) * 100 : null,
+        cspPct: nav ? (s.csp / nav) * 100 : null,
+      };
+    });
+  }, [series, navSeries]);
+  const visiblePct = useMemo(() => sliceByRange(pctSeries, range), [pctSeries, range]);
 
   const loadData = useCallback(async () => {
     try {
@@ -234,6 +265,23 @@ export default function IBKRChartsPage() {
                 />
               </div>
 
+              {visiblePct.some((p) => p.opPct !== null) && (
+                <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
+                  <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">
+                    Outstanding Premium % of NAV
+                  </h2>
+                  <NavLineChart
+                    data={visiblePct
+                      .filter((p) => p.opPct !== null)
+                      .map((p) => ({ date: p.date, value: p.opPct as number }))}
+                    color="var(--gruvbox-yellow)"
+                    valueLabel="OP % NAV"
+                    smaWindow={7}
+                    format={(v) => `${v.toFixed(1)}%`}
+                  />
+                </div>
+              )}
+
               <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
                 <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">Daily PnL</h2>
                 <DailyBarChart
@@ -253,6 +301,23 @@ export default function IBKRChartsPage() {
                   valueLabel="Cash Secured"
                 />
               </div>
+
+              {visiblePct.some((p) => p.cspPct !== null) && (
+                <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
+                  <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">
+                    Cash Secured Put % of NAV
+                  </h2>
+                  <NavLineChart
+                    data={visiblePct
+                      .filter((p) => p.cspPct !== null)
+                      .map((p) => ({ date: p.date, value: p.cspPct as number }))}
+                    color="var(--gruvbox-purple)"
+                    valueLabel="CSP % NAV"
+                    smaWindow={7}
+                    format={(v) => `${v.toFixed(1)}%`}
+                  />
+                </div>
+              )}
             </>
           )}
         </div>
