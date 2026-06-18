@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase, toCamelCaseArray } from "@/lib/supabase";
 import { useError } from "@/lib/error-context";
 import { Trade } from "@/types";
@@ -13,6 +13,7 @@ import {
   valueAsOf,
 } from "@/lib/utils/fifo";
 import { Spinner } from "@/components/ui/Spinner";
+import { Button } from "@/components/ui/Button";
 import { IBKRMenu } from "@/components/layout/IBKRMenu";
 import { OutstandingPremiumChart } from "@/components/ibkr/OutstandingPremiumChart";
 import { DailyBarChart } from "@/components/ibkr/DailyBarChart";
@@ -27,6 +28,16 @@ interface DailyPoint {
   opTotal: number;
 }
 
+type RangeKey = "YTD" | "90D" | "30D" | "10D";
+
+/** X-axis range options. `days` is the lookback window; null means year-to-date. */
+const RANGES: { key: RangeKey; days: number | null }[] = [
+  { key: "YTD", days: null },
+  { key: "90D", days: 90 },
+  { key: "30D", days: 30 },
+  { key: "10D", days: 10 },
+];
+
 /** Local (NY) calendar date of a trade, as YYYY-MM-DD. */
 function localDate(dateTime: string): string {
   const d = parseAsNY(dateTime);
@@ -40,6 +51,17 @@ export default function IBKRChartsPage() {
   const { setError } = useError();
   const [series, setSeries] = useState<DailyPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState<RangeKey>("YTD");
+
+  // Restrict the series to the selected x-axis range, measured back from the
+  // latest data point so the charts always end on the most recent activity.
+  const visibleSeries = useMemo(() => {
+    if (series.length === 0) return series;
+    const lastDate = series[series.length - 1].date;
+    const days = RANGES.find((r) => r.key === range)?.days ?? null;
+    const cutoff = days === null ? `${lastDate.slice(0, 4)}-01-01` : addDaysToDateStr(lastDate, -days);
+    return series.filter((s) => s.date >= cutoff);
+  }, [series, range]);
 
   const loadData = useCallback(async () => {
     try {
@@ -131,6 +153,18 @@ export default function IBKRChartsPage() {
       <div className="flex items-center gap-2 mb-4">
         <IBKRMenu />
         <h1 className="text-xl font-semibold text-[var(--gruvbox-orange)]">Charts</h1>
+        <div className="ml-auto flex items-center gap-1">
+          {RANGES.map((r) => (
+            <Button
+              key={r.key}
+              size="sm"
+              variant={range === r.key ? "primary" : "secondary"}
+              onClick={() => setRange(r.key)}
+            >
+              {r.key}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {series.length === 0 ? (
@@ -142,7 +176,7 @@ export default function IBKRChartsPage() {
               Outstanding Premium
             </h2>
             <OutstandingPremiumChart
-              data={series.map((s) => ({
+              data={visibleSeries.map((s) => ({
                 date: s.date,
                 total: s.opTotal,
                 call: s.opCall,
@@ -155,7 +189,7 @@ export default function IBKRChartsPage() {
           <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
             <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">Daily PnL</h2>
             <DailyBarChart
-              data={series.map((s) => ({ date: s.date, value: s.pnl }))}
+              data={visibleSeries.map((s) => ({ date: s.date, value: s.pnl }))}
               color="sign"
               valueLabel="PnL"
             />
@@ -166,7 +200,7 @@ export default function IBKRChartsPage() {
               Daily Cash Secured Put
             </h2>
             <DailyBarChart
-              data={series.map((s) => ({ date: s.date, value: s.csp }))}
+              data={visibleSeries.map((s) => ({ date: s.date, value: s.csp }))}
               color="var(--gruvbox-purple)"
               valueLabel="Cash Secured"
             />
