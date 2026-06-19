@@ -8,6 +8,7 @@ const menuItems = [
   { href: "/ibkr", label: "Positions", match: (p: string) => p === "/ibkr" || p.startsWith("/ibkr/positions") },
   { href: "/ibkr/stats/daily", label: "Stats", match: (p: string) => p.startsWith("/ibkr/stats") },
   { href: "/ibkr/charts", label: "Charts", match: (p: string) => p.startsWith("/ibkr/charts") },
+  { href: "/ibkr/performance", label: "Performance", match: (p: string) => p.startsWith("/ibkr/performance") },
   { href: "/ibkr/pnl", label: "PnL", match: (p: string) => p.startsWith("/ibkr/pnl") },
   { href: "/ibkr/mtm", label: "MTM", match: (p: string) => p.startsWith("/ibkr/mtm") },
 ];
