@@ -21,6 +21,12 @@ interface ReturnResult {
   annualized: number | null;
 }
 
+/** TWR and MWR for one equity series (the NAV total, or the realized-only curve). */
+interface Returns {
+  twr: ReturnResult | null;
+  mwr: ReturnResult | null;
+}
+
 interface Performance {
   startDate: string;
   endDate: string;
@@ -29,13 +35,22 @@ interface Performance {
   netFlows: number;
   baseValue: number;
   netProfit: number;
-  twr: ReturnResult | null;
-  mwr: ReturnResult | null;
+  total: Returns; // NAV total: realized + unrealized mark-to-market
+  realized: Returns; // realized-only equity curve (closed-trade P&L)
 }
 
 /** Whole days between two YYYY-MM-DD strings (local, DST-safe via parseAsNY). */
 function daysBetween(a: string, b: string): number {
   return Math.round((parseAsNY(b).getTime() - parseAsNY(a).getTime()) / 86_400_000);
+}
+
+/** Local (NY) calendar date of a trade timestamp, as YYYY-MM-DD. */
+function localDate(dateTime: string): string {
+  const d = parseAsNY(dateTime);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 /** Sum of deposits/withdrawals on dates in the half-open interval (after, to]. */
@@ -133,20 +148,63 @@ function rateToReturns(daily: number, days: number): ReturnResult {
   };
 }
 
+/** TWR and MWR for a NAV-shaped series, keyed off its non-null `total` readings. */
+function computeReturns(rows: NavRow[]): Returns {
+  const readings = rows.filter((r) => r.total != null);
+  return { twr: computeTWR(rows, readings), mwr: computeMWR(rows, readings) };
+}
+
+/**
+ * A realized-only equity curve, NAV-shaped so the same TWR/MWR functions apply.
+ * At each NAV reading date the equity is rebuilt from the starting value plus
+ * the deposits and *closed-trade* P&L accumulated since the start — unrealized
+ * mark-to-market of open positions is excluded. Deposit-only rows are kept as-is
+ * so flow accounting stays identical to the total series.
+ */
+function buildRealizedRows(navRows: NavRow[], trades: Trade[]): NavRow[] {
+  const readings = navRows.filter((r) => r.total != null);
+  if (readings.length === 0) return navRows;
+
+  const startDate = readings[0].date;
+  const startingValue = Number(readings[0].total);
+
+  // Realized P&L per calendar day, counting only trades after the start date.
+  const realizedByDate: Record<string, number> = {};
+  for (const t of trades) {
+    const d = localDate(t.dateTime);
+    if (d > startDate) realizedByDate[d] = (realizedByDate[d] ?? 0) + (t.realized_pnl ?? 0);
+  }
+  const realizedThrough = (date: string) =>
+    Object.entries(realizedByDate).reduce((sum, [d, v]) => (d <= date ? sum + v : sum), 0);
+
+  return navRows.map((r) =>
+    r.total == null
+      ? r
+      : {
+          date: r.date,
+          total:
+            startingValue + flowsBetween(navRows, startDate, r.date) + realizedThrough(r.date),
+          deposits_withdrawals: r.deposits_withdrawals,
+        }
+  );
+}
+
 /**
  * Build the performance summary from the NAV series. The starting value is the
  * first reported total (its end-of-day value already includes any deposit on the
- * start date), so only flows *after* the start date are netted out.
+ * start date), so only flows *after* the start date are netted out. Returns are
+ * computed two ways: on the NAV total (realized + unrealized) and on a
+ * realized-only equity curve derived from closed-trade P&L.
  */
-function computePerformance(rows: NavRow[]): Performance | null {
-  const readings = rows.filter((r) => r.total != null);
+function computePerformance(navRows: NavRow[], trades: Trade[]): Performance | null {
+  const readings = navRows.filter((r) => r.total != null);
   if (readings.length < 2) return null;
 
   const start = readings[0];
   const end = readings[readings.length - 1];
   const startingValue = Number(start.total);
   const endingValue = Number(end.total);
-  const netFlows = flowsBetween(rows, start.date, end.date);
+  const netFlows = flowsBetween(navRows, start.date, end.date);
 
   return {
     startDate: start.date,
@@ -156,8 +214,8 @@ function computePerformance(rows: NavRow[]): Performance | null {
     netFlows,
     baseValue: startingValue + netFlows,
     netProfit: endingValue - startingValue - netFlows,
-    twr: computeTWR(rows, readings),
-    mwr: computeMWR(rows, readings),
+    total: computeReturns(navRows),
+    realized: computeReturns(buildRealizedRows(navRows, trades)),
   };
 }
 
@@ -185,11 +243,10 @@ export default function IBKRPerformancePage() {
       if (navError) throw navError;
       if (tradesError) throw tradesError;
 
-      setPerf(computePerformance((navData || []) as NavRow[]));
-
       const trades = calculatePnL(
         toCamelCaseArray<Trade>(tradesData || []).filter((t) => t.symbol !== "USD.CAD")
       );
+      setPerf(computePerformance((navData || []) as NavRow[], trades));
       setRealizedPnl(trades.reduce((sum, t) => sum + (t.realized_pnl ?? 0), 0));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data");
@@ -218,8 +275,18 @@ export default function IBKRPerformancePage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <ReturnCard title="TWR" subtitle="Time-Weighted" result={perf?.twr ?? null} />
-        <ReturnCard title="MWR" subtitle="Money-Weighted (IRR)" result={perf?.mwr ?? null} />
+        <ReturnCard
+          title="TWR"
+          subtitle="Time-Weighted"
+          total={perf?.total.twr ?? null}
+          realized={perf?.realized.twr ?? null}
+        />
+        <ReturnCard
+          title="MWR"
+          subtitle="Money-Weighted (IRR)"
+          total={perf?.total.mwr ?? null}
+          realized={perf?.realized.mwr ?? null}
+        />
 
         <div className="p-4 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
           <div className="text-sm font-semibold text-[var(--gruvbox-fg4)]">Total Realized PnL</div>
@@ -257,8 +324,11 @@ export default function IBKRPerformancePage() {
         <span className="text-[var(--gruvbox-fg3)]">TWR</span> chain-links each sub-period&rsquo;s
         return, removing the effect of deposit/withdrawal timing — it measures the strategy.{" "}
         <span className="text-[var(--gruvbox-fg3)]">MWR</span> is the IRR over the actual cash flows
-        — it reflects your dollar-weighted result. Large figure is since inception; the smaller line
-        is the annualized equivalent.
+        — it reflects your dollar-weighted result.{" "}
+        <span className="text-[var(--gruvbox-fg3)]">Total</span> uses the reported NAV (realized +
+        unrealized mark-to-market of open positions); <span className="text-[var(--gruvbox-fg3)]">
+        Realized</span> counts only closed-trade P&amp;L. Large figure is since inception; the
+        smaller line is the annualized equivalent.
       </p>
     </div>
   );
@@ -267,27 +337,39 @@ export default function IBKRPerformancePage() {
 function ReturnCard({
   title,
   subtitle,
-  result,
+  total,
+  realized,
 }: {
   title: string;
   subtitle: string;
-  result: ReturnResult | null;
+  total: ReturnResult | null;
+  realized: ReturnResult | null;
 }) {
   return (
     <div className="p-4 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
       <div className="text-sm font-semibold text-[var(--gruvbox-fg4)]">{title}</div>
-      <div className="text-xs text-[var(--gruvbox-fg4)] mb-2">{subtitle}</div>
+      <div className="text-xs text-[var(--gruvbox-fg4)] mb-3">{subtitle}</div>
+      <div className="space-y-3">
+        <Variant label="Total" result={total} />
+        <Variant label="Realized" result={realized} />
+      </div>
+    </div>
+  );
+}
+
+function Variant({ label, result }: { label: string; result: ReturnResult | null }) {
+  return (
+    <div>
+      <div className="text-xs text-[var(--gruvbox-fg4)]">{label}</div>
       <div
-        className={`text-3xl font-bold font-data ${
+        className={`text-2xl font-bold font-data ${
           result ? signColor(result.period) : "text-[var(--gruvbox-fg4)]"
         }`}
       >
         {result ? formatPercent(result.period * 100) : "—"}
       </div>
-      <div className="mt-1 text-xs font-data text-[var(--gruvbox-fg4)]">
-        {result?.annualized != null
-          ? `${formatPercent(result.annualized * 100)} annualized`
-          : " "}
+      <div className="text-xs font-data text-[var(--gruvbox-fg4)]">
+        {result?.annualized != null ? `${formatPercent(result.annualized * 100)} annualized` : " "}
       </div>
     </div>
   );
