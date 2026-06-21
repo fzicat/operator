@@ -96,6 +96,14 @@ export default function IBKRChartsPage() {
   const visibleSeries = useMemo(() => sliceByRange(series, range), [series, range]);
   const visibleNav = useMemo(() => sliceByRange(navSeries, range), [navSeries, range]);
 
+  // NAV without deposits, re-based so the line always starts at 0 within the
+  // selected range (subtract the first visible point's gain from every point).
+  const visibleRealGain = useMemo(() => {
+    if (visibleNav.length === 0) return [];
+    const base = visibleNav[0].realGain;
+    return visibleNav.map((s) => ({ date: s.date, value: s.realGain - base }));
+  }, [visibleNav]);
+
   // Outstanding premium and cash-secured put as a percentage of NAV, using the
   // NAV reported on (or most recently before) each trade day.
   const pctSeries = useMemo<PctPoint[]>(() => {
@@ -265,7 +273,7 @@ export default function IBKRChartsPage() {
                   NAV without Deposits
                 </h2>
                 <NavLineChart
-                  data={visibleNav.map((s) => ({ date: s.date, value: s.realGain }))}
+                  data={visibleRealGain}
                   color="var(--gruvbox-green)"
                   valueLabel="Gain"
                   zeroLine
