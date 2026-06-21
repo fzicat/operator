@@ -33,6 +33,8 @@ interface NavPoint {
   date: string;
   nav: number;
   cash: number;
+  /** Cumulative real gain/loss: NAV minus starting value and deposits, based at 0. */
+  realGain: number;
 }
 
 type RangeKey = "YTD" | "90D" | "30D" | "10D";
@@ -116,16 +118,38 @@ export default function IBKRChartsPage() {
       const [{ data: tradesData, error: tradesError }, { data: navData, error: navError }] =
         await Promise.all([
           supabase.from("trades").select("*").order("date_time"),
-          supabase.from("nav").select("date, total, cash").order("date"),
+          supabase.from("nav").select("date, total, cash, deposits_withdrawals").order("date"),
         ]);
 
       if (tradesError) throw tradesError;
       if (navError) throw navError;
 
-      // NAV series: total (NAV) and cash, one point per reported day.
-      const navPoints: NavPoint[] = (navData || [])
-        .filter((r) => r.total != null && r.cash != null)
-        .map((r) => ({ date: r.date as string, nav: Number(r.total), cash: Number(r.cash) }));
+      // NAV series: total (NAV) and cash, one point per reported day. `realGain`
+      // is NAV minus the starting value and all deposits/withdrawals since the
+      // start — based at 0 so deposit-day jumps drop out and only true P&L shows.
+      const navRows = (navData || []) as {
+        date: string;
+        total: number | null;
+        cash: number | null;
+        deposits_withdrawals: number | null;
+      }[];
+      const navReadings = navRows.filter((r) => r.total != null && r.cash != null);
+      const startDate = navReadings[0]?.date;
+      const startingValue = navReadings.length > 0 ? Number(navReadings[0].total) : 0;
+      const navPoints: NavPoint[] = navReadings.map((r) => {
+        const flows =
+          startDate != null
+            ? navRows
+                .filter((row) => row.date > startDate && row.date <= r.date)
+                .reduce((sum, row) => sum + (row.deposits_withdrawals ?? 0), 0)
+            : 0;
+        return {
+          date: r.date,
+          nav: Number(r.total),
+          cash: Number(r.cash),
+          realGain: Number(r.total) - startingValue - flows,
+        };
+      });
       setNavSeries(navPoints);
 
       const allTrades = toCamelCaseArray<Trade>(tradesData || []);
@@ -233,6 +257,18 @@ export default function IBKRChartsPage() {
                   data={visibleNav.map((s) => ({ date: s.date, value: s.nav }))}
                   color="var(--gruvbox-yellow)"
                   valueLabel="NAV"
+                />
+              </div>
+
+              <div className="p-3 bg-[var(--gruvbox-bg1)] rounded border border-[var(--gruvbox-bg3)]">
+                <h2 className="text-sm font-semibold text-[var(--gruvbox-fg4)] mb-2">
+                  NAV without Deposits
+                </h2>
+                <NavLineChart
+                  data={visibleNav.map((s) => ({ date: s.date, value: s.realGain }))}
+                  color="var(--gruvbox-green)"
+                  valueLabel="Gain"
+                  zeroLine
                 />
               </div>
 
