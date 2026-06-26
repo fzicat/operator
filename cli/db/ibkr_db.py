@@ -198,3 +198,22 @@ def fetch_symbol_margin_requirements() -> dict:
     except Exception as e:
         print(f"Error fetching symbol margin requirements: {e}")
         return {}
+
+
+def fetch_symbol_scores() -> dict:
+    """
+    Retrieves the integer score (typically 0-100) per symbol.
+    Returns a dictionary {symbol: score}
+    """
+    client = get_client()
+
+    try:
+        response = client.table('symbol_targets').select('symbol, score').execute()
+        return {
+            row['symbol']: int(row['score'])
+            for row in response.data
+            if row.get('score') is not None
+        }
+    except Exception as e:
+        print(f"Error fetching symbol scores: {e}")
+        return {}

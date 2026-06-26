@@ -56,6 +56,7 @@ class IBKRModule(Module):
         self.target_percent = ibkr_db.fetch_symbol_targets()
         self.symbol_basket = ibkr_db.fetch_symbol_baskets()
         self.margin_requirements = ibkr_db.fetch_symbol_margin_requirements()
+        self.symbol_score = ibkr_db.fetch_symbol_scores()
         
         self.load_trades()
 
@@ -436,6 +437,7 @@ class IBKRModule(Module):
         - LC  | list call   > List all positions (by Call qty)
         - LP  | list put    > List all positions (by Put qty)
         - LZ  | list total  > List all positions (by Total Realized PnL)
+        - LO  | list score  > List all positions (by Score)
         - LB  | list basket > List positions grouped by Basket
         - CSV | list csv    > Print positions as CSV (sorted by Symbol)
         - T   | trades     > List trades (last 7 days) [oo: opening options only]
@@ -510,6 +512,8 @@ class IBKRModule(Module):
             self.list_all_positions(order_by='p_qty', ascending=True)
         elif cmd in ['lz', 'list total']:
             self.list_all_positions(order_by='t_pnl', ascending=False)
+        elif cmd in ['lo', 'list score']:
+            self.list_all_positions(order_by='score', ascending=False)
         elif cmd in ['lb', 'list basket']:
             self.list_positions_by_basket()
         elif cmd in ['csp', 'cash secured put']:
@@ -1476,6 +1480,7 @@ class IBKRModule(Module):
 
             table = Table(title="All Positions", expand=False, row_styles=["", "on #1d2021"])
             table.add_column(_hdr("Symbol", "s"), style="neutral_yellow")
+            table.add_column(_hdr("Score", "o"), justify="right", style="neutral_green")
             if is_lz:
                 table.add_column(_hdr("MTM Value", "m"), justify="right", style="neutral_blue")
                 table.add_column("MTM %", justify="right", style="neutral_blue")
@@ -1568,6 +1573,7 @@ class IBKRModule(Module):
                         'c_pnl': c_pnl,
                         'p_pnl': p_pnl,
                         'target_pct': self.target_percent.get(symbol, 0.0),
+                        'score': self.symbol_score.get(symbol, 0),
                         'share_price': share_price
                      })
 
@@ -1586,6 +1592,8 @@ class IBKRModule(Module):
                 data_rows.sort(key=lambda x: (x['p_qty'], x['c_qty']), reverse=not ascending)
             elif order_by == 't_pnl':
                 data_rows.sort(key=lambda x: x['s_pnl'] + x['c_pnl'] + x['p_pnl'], reverse=not ascending)
+            elif order_by == 'score':
+                data_rows.sort(key=lambda x: x['score'], reverse=not ascending)
 
 
             # Calculate totals
@@ -1642,6 +1650,7 @@ class IBKRModule(Module):
                 if is_lz:
                     table.add_row(
                         str(row['symbol']),
+                        str(row['score']) if row['score'] else "",
                         f"{row['mtm']:,.2f}" if row['mtm'] != 0 else "",
                         mtm_pct_str,
                         fmt_pnl(row['s_unrlzd']),
@@ -1656,6 +1665,7 @@ class IBKRModule(Module):
                 elif is_lq:
                     table.add_row(
                         str(row['symbol']),
+                        str(row['score']) if row['score'] else "",
                         f"{tgt_shares:,}" if tgt_shares != 0 else "",
                         f"{row['s_qty']:.0f}" if row['s_qty'] != 0 else "",
                         f"{row['c_qty']:.0f}" if row['c_qty'] != 0 else "",
@@ -1675,6 +1685,7 @@ class IBKRModule(Module):
                 else:
                     table.add_row(
                         str(row['symbol']),
+                        str(row['score']) if row['score'] else "",
                         f"{row['book_price'] * -1:.2f}" if row['book_price'] != 0 else "",
                         f"{row['value']:,.2f}" if row['value'] != 0 else "",
                         f"{row['mtm']:,.2f}" if row['mtm'] != 0 else "",
@@ -1697,6 +1708,7 @@ class IBKRModule(Module):
             if is_lz:
                 table.add_row(
                     "TOTAL",
+                    "",  # Score - no aggregate
                     f"{total_mtm:,.2f}",
                     f"{total_mtm / total_mtm * 100:.2f}%" if total_mtm != 0 else "",
                     fmt_pnl(total_s_unrlzd),
@@ -1712,6 +1724,7 @@ class IBKRModule(Module):
             elif is_lq:
                 table.add_row(
                     "TOTAL",
+                    "",  # Score - no aggregate
                     "",  # Tgt Q column - no total
                     f"{total_s_qty:.0f}",
                     f"{total_c_qty:.0f}",
@@ -1732,6 +1745,7 @@ class IBKRModule(Module):
             else:
                 table.add_row(
                     "TOTAL",
+                    "",  # Score - no aggregate
                     "",  # Book Price - no aggregate
                     f"{total_value:,.2f}",
                     f"{total_mtm:,.2f}",
