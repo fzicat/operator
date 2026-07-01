@@ -11,6 +11,10 @@ the shared Supabase database.
 |------|-------------|
 | `get_portfolio_holdings` | Current IBKR holdings aggregated by underlying symbol (qty, book price, cost basis, MTM, unrealized/realized PnL, weight, target, basket, score). Pass `include_legs=true` for per-contract detail. |
 | `get_market_prices` | Latest mark-to-market quotes (mark/bid/ask/last/close + status). Optional `symbol` and `instrument_type` filters. |
+| `list_ibkr_trades` | Raw IBKR trade history with filters for symbol/underlying/date/instrument/put-call/open-close, pagination, and computed FIFO/cashflow fields. |
+| `get_ibkr_trade_summary` | Aggregates IBKR trades by underlying symbol, month, and strategy bucket with realized PnL, commissions, cashflow, option contract volume, and stock share volume. |
+| `get_option_exposure` | Current open option exposure by contract: side, expiry/strike, contracts, notional, delta/position delta, MTM, quote status, and expiry totals. |
+| `get_assignment_history` | High-confidence inferred option assignment/exercise events from paired zero-price option closes and stock trades at the strike. |
 | `get_equity_entries` | Equity module entries (net-worth tracking) with CAD-converted `balance_cad` / `balance_net`. Filter by `date`, `latest_only`, `account`, `category`. |
 | `get_equity_summary` | Net-worth summary for a snapshot date (defaults to latest): totals + breakdown by category and account. |
 | `list_equity_dates` | All distinct equity snapshot dates, newest first. |
